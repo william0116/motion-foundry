@@ -1,13 +1,20 @@
+import {renderCard} from './card-renderer.js';
+import {renderExpanded} from './expanded-renderer.js';
+import {renderStory} from './story-renderer.js';
+import {paletteFor} from './schemes.js';
 const clamp = (v,a=0,b=1) => Math.max(a,Math.min(b,v));
 const out = x => 1-Math.pow(1-clamp(x),3);
 const back = x => { x=clamp(x)-1; return 1+2.70158*x*x*x+1.70158*x*x; };
 const font = '"PingFang SC","Microsoft YaHei",sans-serif';
 // Every frame depends only on progress + settings. CSS checkerboard is never drawn here.
 export function renderFrame(canvas,e,s,p) {
+ if(e.engine==='story'){renderStory(canvas,e,s,p);return;}
+ if(e.engine==='expanded'){renderExpanded(canvas,e,s,p);return;}
+ if(e.kind){renderCard(canvas,e,s,p);return;}
  const c=canvas.getContext('2d'), w=canvas.width,h=canvas.height;
- c.clearRect(0,0,w,h); p=Math.pow(clamp(p),1.35-s.intensity/140); c.save();
+ c.clearRect(0,0,w,h); p=e.category==='transition'?clamp(p):Math.pow(clamp(p),1.35-s.intensity/140); c.save();
  const enter=out(p/.23),exit=1-out((p-.82)/.18),strength=.4+s.intensity/100;
- c.globalAlpha=exit; const color=s.color, white='#f5f7f0',ink='#18201b';
+ c.globalAlpha=exit; const color=paletteFor(s).accent, white='#f5f7f0',ink='#18201b';
  const box=(x,y,bw,bh,r=12,fill=color)=>{c.fillStyle=fill;c.beginPath();c.roundRect(x,y,bw,bh,r);c.fill();};
  const line=(x1,y1,x2,y2,stroke=color,width=3)=>{c.strokeStyle=stroke;c.lineWidth=width;c.lineCap='round';c.beginPath();c.moveTo(x1,y1);c.lineTo(x2,y2);c.stroke();};
  const text=(str,x,y,size=48,fill=white,max=640,weight=650)=>{c.fillStyle=fill;c.font=`${weight} ${size}px ${font}`;c.textAlign='center';c.textBaseline='middle';const measured=c.measureText(str).width;if(measured>max)c.font=`${weight} ${size*max/measured}px ${font}`;c.fillText(str,x,y);};
@@ -16,6 +23,7 @@ export function renderFrame(canvas,e,s,p) {
  const imageAt=(x,y,size=88)=>{if(!s.image)return false;const im=s.image;const k=Math.min(size/im.width,size/im.height);c.drawImage(im,x-im.width*k/2,y-im.height*k/2,im.width*k,im.height*k);return true;};
  if(e.category==='transition'){
   c.globalAlpha=1; c.fillStyle=color;
+  if(p>=.46&&p<=.54){c.fillRect(0,0,w,h);c.restore();return;}
   // Each transition begins and ends transparent and is opaque in the middle.
   const coverage=p<.5?out(p/.5):1-out((p-.5)/.5);
   if(e.id==='diagonal'){c.save();c.translate(w/2,h/2);c.rotate(-.2);c.fillRect(-w*1.2,-h*1.2,w*2.4*coverage,h*2.4);c.restore();}

@@ -1,5 +1,9 @@
+import {extraEffects} from './extra-effects.js';
+import {expandedEffects,parseSeries} from './expanded-effects.js';
+import {storyEffects} from './story-effects.js';
 export const categories = [
-  ['text','T','文字标题'],['info','▤','信息字幕'],['mark','↗','强调标注'],['data','▥','数据动画'],
+  ['portrait','▯','竖版卡片'],['lexseek','L','LexSeek 套装'],
+  ['text','T','文字标题'],['caption','≋','动态字幕'],['info','▤','信息字幕'],['mark','↗','强调标注'],['data','▥','数据动画'],['diagram','⌘','流程图解'],['media','▧','图片展示'],
   ['logo','◈','Logo 演绎'],['transition','◧','转场效果'],['decor','✧','氛围装饰'],['social','▣','社媒组件']
 ];
 export const colors = [['#c4f36b','青柠'],['#b8a7ff','紫罗兰'],['#ffa788','珊瑚'],['#84d8e8','冰蓝'],['#f5df82','奶油'],['#ffffff','纯白']];
@@ -29,12 +33,25 @@ const rows = [
  ['search','搜索框','social','科技','寻找下一份灵感','SEARCH YOUR INSPIRATION','#84d8e8'],
  ['follow','关注提醒','social','活力','关注，保持灵感','每周分享新鲜创意','#ffa788']
 ];
-export const effects = rows.map(([id,name,category,style,title,subtitle,color]) => ({id,name,category,style,title,subtitle,color}));
-export const defaults = effect => ({title:effect.title,subtitle:effect.subtitle,color:effect.color,ratio:'16:9',duration:3,intensity:60,position:'center',scale:100,image:null});
+export const effects = [...rows.map(([id,name,category,style,title,subtitle,color]) => ({id,name,category,style,title,subtitle,color})),...extraEffects,...expandedEffects,...storyEffects];
+export const defaults = effect => ({title:effect.title,subtitle:effect.subtitle,body:effect.body||'',badge:effect.badge||'',scheme:effect.scheme||'free',color:effect.color,ratio:effect.ratio||'16:9',duration:effect.duration||3,intensity:60,position:'center',scale:100,image:null});
 export function dimensions(ratio,shortSide) { return ratio === '9:16' ? [shortSide,Math.round(shortSide*16/9)] : ratio === '1:1' ? [shortSide,shortSide] : [Math.round(shortSide*16/9),shortSide]; }
+export function validateBody(effect,body='') {
+ const rows=body.split('\n').filter(x=>x.trim());
+ if(effect.bodyMode==='series'){
+  const series=parseSeries(body);
+  if(rows.length<2||rows.length>effect.maxLines)return `请输入 2–${effect.maxLines} 行，每行一个数据项。`;
+  if(series.some(x=>!x||!x.label||x.label.length>12||!Number.isFinite(x.value)||x.value>999999))return '每行填写「名称:数值」，名称最多 12 字，数值为 0–999999；不支持负数。';
+  if(!series.some(x=>x.value>0))return '至少有一项数值需要大于 0。';
+ }
+ if(effect.bodyMode==='lines'&&(!rows.length||rows.length>effect.maxLines))return `请输入 1–${effect.maxLines} 项，每行一项。`;
+ const limit=['compare','question'].includes(effect.kind)?2:3;return ['stack','checklist','compare','question','timeline'].includes(effect.kind)&&rows.length>limit?`这个版式最多显示 ${limit} 项，请删除多余行或选择其他版式。`:'';
+}
 export function validateContent(effect, title) {
  if (effect.category === 'transition') return '';
  if (!title.trim()) return '请填写主标题后再导出。';
+ if(effect.numeric==='percent'&&(!/^\d+(\.\d+)?$/.test(title.trim())||+title>100))return '请输入 0–100 之间的数字。';
+ if(effect.numeric==='integer'&&(!/^\d{1,6}$/.test(title.trim())))return '滚轮计数器请输入 0–999999 之间的整数。';
  if (['counter','progress'].includes(effect.id) && (!/^\d+(\.\d+)?$/.test(title.trim()) || +title > (effect.id === 'progress' ? 100 : 999999999))) return effect.id === 'progress' ? '进度环请输入 0–100 之间的数字。' : '数字增长请输入 0–999999999 之间的数字。';
  if (effect.id === 'bars' && (!/^\d+(\.\d+)?(\s*[,，]\s*\d+(\.\d+)?){1,5}$/.test(title.trim()) || title.split(/[,，]/).some(n=>+n>999999))) return '柱状增长请输入 2–6 个数字，用逗号分隔；每项不超过 999999。';
  return '';

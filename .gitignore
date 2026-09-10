@@ -1,0 +1,19 @@
+# Local machine files and credentials
+.DS_Store
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.log
+
+# Dependencies and generated test output
+node_modules/
+__pycache__/
+*.py[cod]
+playwright-report/
+test-results/
+artifacts/
+coverage/
+
+# dist/ is the authored, deployable website. Do not ignore it.
