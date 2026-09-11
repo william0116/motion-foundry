@@ -15,5 +15,7 @@ playwright-report/
 test-results/
 artifacts/
 coverage/
+.openai/
+.venv/
 
 # dist/ is the authored, deployable website. Do not ignore it.

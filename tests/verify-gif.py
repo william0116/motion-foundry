@@ -1,13 +1,16 @@
 """Independent saved-file validation: python verify-gif.py <test-output-directory>."""
 import hashlib
+import argparse
 import json
-import sys
 from pathlib import Path
 
 from PIL import Image
 
 reports = []
-for file in sorted(Path(sys.argv[1]).glob('*.gif')):
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('output_directory', type=Path)
+args = parser.parse_args()
+for file in sorted(args.output_directory.glob('*.gif')):
     with Image.open(file) as gif:
         assert gif.format == 'GIF'
         assert gif.info.get('loop') == 0

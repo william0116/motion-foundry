@@ -1,102 +1,832 @@
-import {categories,colors,effects,defaults,dimensions,validateContent,validateBody} from './data.js';
-import {renderFrame} from './renderer.js';
-import {toPNG,download,exportSequence} from './exporter.js';
-import {exportGIF} from './gif-exporter.js';
-import {mountCollections} from './collections-ui.js';
-import {schemes} from './schemes.js';
-import {storySources} from './story-effects.js';
+import {
+  categories,
+  colors,
+  effects,
+  defaults,
+  dimensions,
+  validateContent,
+  validateBody,
+} from './data.js';
+import { renderFrame } from './renderer.js';
+import { toPNG, download, exportSequence } from './exporter.js';
+import { exportGIF } from './gif-exporter.js';
+import { mountCollections } from './collections-ui.js';
+import { schemes } from './schemes.js';
+import { storySources } from './story-effects.js';
 mountCollections();
-const $=id=>document.getElementById(id);
-const read=key=>{try{const v=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(v)?v.filter(id=>effects.some(e=>e.id===id)):[];}catch{return [];}};
-let selected=effects.find(e=>e.id==='s-treemap'),settings=defaults(selected),favorites=new Set(read('motion:favorites')),recent=read('motion:recent');
-let view='all',category='story',query='',style='all',format='all',playing=!matchMedia('(prefers-reduced-motion: reduce)').matches,progress=.3,lastTime=0,hover=null,toastTimer,exportController=null,lastExport=null,lastDownloadUrl=null;
-const notify=message=>{$('toast').textContent=message;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,3000);};
-const persist=()=>{try{localStorage.setItem('motion:favorites',JSON.stringify([...favorites]));localStorage.setItem('motion:recent',JSON.stringify(recent));}catch{notify('当前浏览器无法保存收藏，本次仍可正常使用。');}};
-function state(){return {selectedId:selected.id,effectName:selected.name,settings:{...settings,image:settings.image?'local image':null},visibleIds:filtered().map(e=>e.id),favorites:[...favorites],playing,progress,lastExport};}
-function filtered(){return effects.filter(e=>(view!=='favorites'||favorites.has(e.id))&&(view!=='recent'||recent.includes(e.id))&&(category==='all'||(category==='new'?e.release===3:category==='story'?e.collection==='story':e.category===category))&&(style==='all'||e.style===style)&&(format==='all'||(e.ratio||'16:9')===format)&&(!query||`${e.name} ${e.style} ${categories.find(c=>c[0]===e.category)[2]} ${e.title} ${e.tags||''}`.toLowerCase().includes(query.toLowerCase()))).sort((a,b)=>view==='recent'?recent.indexOf(a.id)-recent.indexOf(b.id):(b.release||Number(!!b.isNew))-(a.release||Number(!!a.isNew)));}
-function favorite(id){favorites.has(id)?favorites.delete(id):favorites.add(id);persist();renderLibrary();syncFavorite();}
-function syncFavorite(){$('favoriteCount').textContent=favorites.size;$('favoriteButton').setAttribute('aria-pressed',favorites.has(selected.id));$('favoriteButton').textContent=favorites.has(selected.id)?'♥':'♡';}
-function renderLibrary(){
- hover=null;const list=filtered();$('effectGrid').replaceChildren();$('resultCount').textContent=`${list.length} 个`;$('emptyState').hidden=list.length>0;
- $('resultTitle').textContent=category==='story'?'口播解说套装':category==='new'?'形式扩展包':category!=='all'?categories.find(c=>c[0]===category)[2]:view==='favorites'?'我的收藏':view==='recent'?'最近使用':'全部动效';
- $('libraryGuide').textContent=category==='story'?'从三条竖屏参考提炼的原创模板：先出证据 → 逐项解释 → 聚焦重点。点击模板查看参考时间与用法；人物视频与声音需后续剪辑合成。':'支持按用途搜索：口播、开场、知识、产品、互动、转场。所有动效均可切换画幅。';
- $('pageTitle').textContent=view==='favorites'?'好动效，随时再用。':view==='recent'?'继续你的创作。':'让画面，多一点精彩。';
- $('pageSubtitle').textContent=view==='favorites'?'你的常用动效，保存在这个浏览器里。':view==='recent'?'最近选择过的动效，都在这里。':'选一个喜欢的动效，换上你的内容。';
- for(const e of list){const article=document.createElement('article');article.className='effect-card'+(e.isNew?' is-new':'');const button=document.createElement('button');button.className='effect-select';button.dataset.effect=e.id;button.setAttribute('aria-label',`试用${e.name}`);button.setAttribute('aria-pressed',e.id===selected.id);
- const thumb=document.createElement('div');thumb.className='thumb'+(e.ratio==='9:16'?' portrait-thumb':'');thumb.style.background=`linear-gradient(145deg, ${e.color}22, #1b2026)`;const canvas=document.createElement('canvas');[canvas.width,canvas.height]=e.ratio==='9:16'?[360,640]:[480,320];canvas.setAttribute('aria-hidden','true');thumb.append(canvas);
- const alpha=document.createElement('span');alpha.className='card-alpha';alpha.textContent=e.ratio==='9:16'?'9:16':'▧';const duration=document.createElement('span');duration.className='duration-pill';duration.textContent=`${e.duration||3}.0s`;thumb.append(alpha,duration);
- const info=document.createElement('div');info.className='card-info';const title=document.createElement('span');title.className='card-title';title.textContent=e.name;const arrow=document.createElement('span');arrow.textContent='↗';info.append(title,arrow);const desc=document.createElement('div');desc.className='card-category';desc.textContent=`${e.style} · ${categories.find(c=>c[0]===e.category)[2]}`;button.append(thumb,info,desc);button.onclick=()=>selectEffect(e.id,true);
- button.onpointerenter=()=>hover={canvas,e,start:performance.now()};button.onpointerleave=()=>{hover=null;renderFrame(canvas,e,defaults(e),e.category==='transition'?.28:.48);};button.onfocus=()=>hover={canvas,e,start:performance.now()};button.onblur=button.onpointerleave;
- const star=document.createElement('button');star.className='card-favorite';star.setAttribute('aria-label',`收藏${e.name}`);star.setAttribute('aria-pressed',favorites.has(e.id));star.textContent=favorites.has(e.id)?'♥':'♡';star.onclick=()=>favorite(e.id);article.append(button,star);$('effectGrid').append(article);renderFrame(canvas,e,defaults(e),e.category==='transition'?.28:.48);
- }
- document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view&&category==='all'));document.querySelectorAll('[data-category]').forEach(b=>b.classList.toggle('active',b.dataset.category===category));document.querySelectorAll('[data-collection]').forEach(b=>b.classList.toggle('active',b.dataset.collection===category&&view==='all'));syncFavorite();
-}
-function selectEffect(id,scroll=false){const e=effects.find(e=>e.id===id);if(!e)throw new Error('未找到该动效');selected=e;settings=defaults(e);recent=[id,...recent.filter(x=>x!==id)].slice(0,24);persist();progress=.05;syncControls();renderLibrary();if(scroll&&innerWidth<=700)document.querySelector('.inspector').scrollIntoView({behavior:'smooth',block:'start'});}
-function syncPreviewSize(){const mobile=matchMedia('(max-width:700px)').matches,maxWidth=mobile?(settings.ratio==='9:16'?152:settings.ratio==='1:1'?270:550):(settings.ratio==='9:16'?92:settings.ratio==='1:1'?164:292);$('previewStage').style.width=`min(calc(100% - ${mobile?40:36}px), ${maxWidth}px)`;}
-function validate(show=true){const error=validateContent(selected,settings.title),bodyError=validateBody(selected,settings.body);if(show){$('titleError').textContent=error;$('titleError').hidden=!error;$('titleInput').setAttribute('aria-invalid',!!error);$('bodyError').textContent=bodyError;$('bodyError').hidden=!bodyError;$('bodyInput').setAttribute('aria-invalid',!!bodyError);}return error||bodyError;}
-function syncControls(){
- $('effectName').textContent=selected.name;for(const k of ['title','subtitle'])$(k+'Input').value=settings[k];for(const k of ['ratio','duration','intensity','scale'])$(k).value=settings[k];
- $('extraContent').hidden=selected.engine?!selected.bodyMode:!selected.kind||['wordmark','ribbon'].includes(selected.kind);$('bodyInput').value=settings.body;$('badgeInput').value=settings.badge;$('schemeSelect').value=settings.scheme;$('badgeInput').parentElement.hidden=!!selected.engine&&(selected.category!=='portrait'||selected.engine==='story');
- $('bodyHint').textContent=selected.bodyMode==='series'?`每行「名称:数值」，2–${selected.maxLines} 项，例如「创作:45」。示例数据请替换；不支持负数。`:selected.bodyMode==='lines'?`每行一项，最多 ${selected.maxLines} 项。`:['compare','question'].includes(selected.kind)?'每行一项，最多 2 项。':['stack','checklist','timeline'].includes(selected.kind)?'每行一项，最多 3 项。':'支持换行，最多 180 字；会自动适配版式。';
- if(selected.bodyHint)$('bodyHint').textContent=selected.bodyHint;
- $('schemeNote').textContent=(settings.scheme==='free'?'使用下方色板自由调整。':selected.kind||selected.engine?'只改变当前动效，其他模板保持各自风格。':'原有模板使用方案强调色；完整成套效果请选新卡片。')+(settings.scheme.startsWith('lexseek')?' 品牌亮色 / 暗色均可选。':'');
- $('safeButton').hidden=settings.ratio!=='9:16';$('safeGuide').hidden=settings.ratio!=='9:16'||$('safeButton').getAttribute('aria-pressed')!=='true';$('cardNote').hidden=!(selected.kind||selected.engine);
- $('cardNote').textContent=selected.category==='transition'?'覆盖层转场 · 在片段中点切换底层视频':selected.category==='caption'?'固定节奏字幕 · 非自动语音识别 / 对齐':selected.variant==='waveform'?'装饰波形 · 不随音频变化':selected.variant==='film'?'单图走格 · 当前重复展示同一张图片':selected.category==='media'?'替换本地图片 · 图片居中裁切 · 边框外透明':selected.category==='data'?'示例数值可修改 · 图形外透明 · 面板底色保留':selected.kind||selected.category==='portrait'?'卡片外透明 · 卡片底色保留 · 安全区不导出':'只导出动画元素 · 背景与安全区不导出';
- if(selected.usage)$('cardNote').textContent=selected.usage;
- $('referenceNote').replaceChildren();$('referenceNote').hidden=!selected.source;
- if(selected.source){const source=storySources[selected.source],link=document.createElement('a');link.href=source.url+'?t='+selected.at;link.target='_blank';link.rel='noopener noreferrer';link.textContent=`参考：${source.name} · ${Math.floor(selected.at/60)}:${String(selected.at%60).padStart(2,'0')} ↗`;$('referenceNote').append(link);}
- $('titleInput').placeholder=selected.id==='bars'?'例如 12,28,45,68':selected.numeric||['counter','progress'].includes(selected.id)?'填写数值':'写下你的标题';$('titleInput').disabled=selected.category==='transition';$('subtitleInput').disabled=selected.category==='transition';$('uploadLabel').hidden=selected.category==='transition'||(!!selected.engine&&!selected.imageRole);
- $('uploadLabel').querySelector('span').textContent=settings.image?'✓ 图片已添加（仅本地）':selected.imageRole?'＋ 添加'+selected.imageRole:'＋ 添加 Logo / 图片';$('removeImage').hidden=!settings.image;
- for(const id of ['positionControl','scale']){const node=$(id);node.style.opacity=selected.category==='transition'?'.4':'1';if(node.tagName==='INPUT')node.disabled=selected.category==='transition';else node.querySelectorAll('button').forEach(b=>b.disabled=selected.category==='transition');}
- document.querySelectorAll('[data-position]').forEach(b=>b.classList.toggle('selected',b.dataset.position===settings.position));document.querySelectorAll('.swatch').forEach(b=>{b.disabled=settings.scheme!=='free';b.classList.toggle('selected',b.dataset.color===settings.color&&settings.scheme==='free');b.setAttribute('aria-pressed',b.dataset.color===settings.color&&settings.scheme==='free');});
- const [w,h]=dimensions(settings.ratio,540);$('preview').width=w;$('preview').height=h;$('previewStage').style.aspectRatio=`${w}/${h}`;syncPreviewSize();$('previewStage').style.minHeight='0';$('previewStage').style.marginInline='auto';$('dimensions').textContent=dimensions(settings.ratio,1080).join(' × ');validate();syncFavorite();draw();
-}
-function draw(){if(!$('previewBody').hidden)renderFrame($('preview'),selected,settings,progress);if($('largePreviewDialog').open)renderFrame($('largePreviewCanvas'),selected,settings,progress);$('scrub').value=Math.round(progress*1000);$('timeDisplay').textContent=`${(progress*settings.duration).toFixed(1)} / ${settings.duration.toFixed(1)}s`;$('playButton').textContent=playing?'Ⅱ':'▶';$('playButton').setAttribute('aria-label',playing?'暂停预览':'播放预览');}
-function tick(time){const delta=lastTime?Math.min(time-lastTime,100):0;lastTime=time;if(playing&&!document.hidden&&!$('exportDialog').open&&!$('helpDialog').open)progress=(progress+delta/(settings.duration*1000))%1;draw();if(hover){const ms=(hover.e.duration||3)*1000;renderFrame(hover.canvas,hover.e,defaults(hover.e),((time-hover.start)%ms)/ms);}requestAnimationFrame(tick);}
-for(const [id,icon,name] of categories){const b=document.createElement('button');b.className='nav-item';b.dataset.category=id;const span=document.createElement('span');span.textContent=icon;const count=document.createElement('small');count.textContent=effects.filter(e=>e.category===id).length;b.append(span,document.createTextNode(name),count);b.onclick=()=>{category=id;view='all';renderLibrary();};$('categories').append(b);}
-for(const [color,name] of colors){const b=document.createElement('button');b.className='swatch';b.style.background=color;b.dataset.color=color;b.setAttribute('aria-label',`配色：${name}`);b.onclick=()=>{settings.color=color;syncControls();};$('palette').append(b);}
-document.querySelectorAll('[data-collection]').forEach(b=>b.onclick=()=>{view='all';category=b.dataset.collection;query='';style='all';format='all';$('search').value='';$('styleFilter').value='all';$('formatFilter').value='all';renderLibrary();});
-$('formatFilter').onchange=e=>{format=e.target.value;renderLibrary();};
-$('schemeSelect').onchange=e=>{if(!schemes.some(s=>s.id===e.target.value))return;settings.scheme=e.target.value;syncControls();};for(const key of ['badge','body'])$(key+'Input').oninput=e=>{settings[key]=e.target.value;validate();draw();};
-$('safeButton').onclick=()=>{const on=$('safeButton').getAttribute('aria-pressed')!=='true';$('safeButton').setAttribute('aria-pressed',on);$('safeGuide').hidden=!on;};
-$('expandPreview').onclick=()=>{const canvas=$('largePreviewCanvas');[canvas.width,canvas.height]=dimensions(settings.ratio,540);$('largePreviewTitle').textContent=selected.name;$('largePreviewDialog').showModal();draw();};$('closeLargePreview').onclick=()=>$('largePreviewDialog').close();
-$('togglePreview').onclick=()=>{const expanded=$('togglePreview').getAttribute('aria-expanded')==='true';$('togglePreview').setAttribute('aria-expanded',String(!expanded));$('previewBody').hidden=expanded;$('previewToggleLabel').textContent=expanded?'展开':'收起';if(!expanded)draw();};matchMedia('(max-width:700px)').addEventListener?.('change',syncPreviewSize);
-$('totalCount').textContent=effects.length;document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{view=b.dataset.view;category='all';renderLibrary();});$('search').oninput=e=>{query=e.target.value.trim();renderLibrary();};$('styleFilter').onchange=e=>{style=e.target.value;renderLibrary();};$('clearFilters').onclick=()=>{query='';style='all';format='all';category='all';view='all';$('search').value='';$('styleFilter').value='all';$('formatFilter').value='all';renderLibrary();};$('favoriteButton').onclick=()=>favorite(selected.id);
-for(const k of ['title','subtitle'])$(k+'Input').oninput=e=>{settings[k]=e.target.value;validate();draw();};for(const k of ['ratio','duration','intensity','scale'])$(k).oninput=e=>{settings[k]=k==='ratio'?e.target.value:+e.target.value;syncControls();};document.querySelectorAll('[data-position]').forEach(b=>b.onclick=()=>{settings.position=b.dataset.position;syncControls();});
-document.querySelectorAll('[data-bg]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-bg]').forEach(x=>x.classList.toggle('selected',x===b));$('previewStage').className=`preview-stage ${b.dataset.bg}`;});$('playButton').onclick=()=>{playing=!playing;draw();};$('scrub').oninput=e=>{playing=false;progress=+e.target.value/1000;draw();};$('replayButton').onclick=()=>{progress=0;playing=true;draw();};$('resetButton').onclick=()=>{settings=defaults(selected);$('imageUpload').value='';syncControls();notify('已恢复该动效的默认内容与样式');};
-$('imageUpload').onchange=async e=>{const file=e.target.files[0];if(!file)return;if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>10*1024*1024){notify('请选择 10 MB 以内的 PNG、JPG 或 WebP 图片');e.target.value='';return;}const url=URL.createObjectURL(file);try{const im=new Image();im.src=url;await im.decode();if(im.width*im.height>24000000)throw new Error('图片尺寸过大，请缩小到 2400 万像素以内');settings.image=im;syncControls();notify('图片已加入，未上传到服务器');}catch(error){notify(error.message||'图片无法读取，请重新选择');}finally{URL.revokeObjectURL(url);e.target.value='';}};$('removeImage').onclick=()=>{settings.image=null;syncControls();};
-for(const id of ['helpButton','guideButton'])$(id).onclick=()=>$('helpDialog').showModal();document.querySelectorAll('#helpDialog .close-dialog').forEach(b=>b.onclick=()=>$('helpDialog').close());
-const exportPreferences={png:{resolution:'1080',fps:'30'},gif:{resolution:'480',fps:'15'}};
-let exportMode='png';
-function exportSummary(){
- const format=document.querySelector('[name=format]:checked').value,frame=format==='frame',gif=format==='gif',mode=gif?'gif':'png';
- if(mode!==exportMode){
-  exportPreferences[exportMode]={resolution:$('exportResolution').value,fps:$('exportFps').value};exportMode=mode;
-  const resolutions=gif?[[360,'360p · 小体积'],[480,'480p · 推荐'],[720,'720p · 更清晰，文件较大']]:[[720,'720p · 快速验证'],[1080,'1080p · 高清']];
-  $('exportResolution').replaceChildren(...resolutions.map(([value,label])=>new Option(label,value)));
-  $('exportFps').replaceChildren(...(gif?[10,15,20]:[24,25,30]).map(value=>new Option(`${value} fps${gif&&value===15?' · 推荐':''}`,value)));
-  $('exportResolution').value=exportPreferences[mode].resolution;$('exportFps').value=exportPreferences[mode].fps;
- }
- const [w,h]=dimensions(settings.ratio,+$('exportResolution').value),fps=+$('exportFps').value;
- $('exportFps').disabled=frame||!!exportController;$('gifOptions').hidden=!gif;
- $('exportDescription').textContent=gif?'把当前动效做成循环动图，直接预览或分享。':'只导出动画本身，保留柔边与半透明效果。';
- const background={transparent:'透明（硬边）',white:'白底',black:'黑底'}[$('gifBackground').value];
- $('exportSummary').textContent=frame?`${w} × ${h} · 当前 ${(progress*settings.duration).toFixed(2)} 秒 · RGBA 透明 PNG`:`${w} × ${h} · ${settings.duration} 秒 · ${Math.round(fps*settings.duration)} 帧 · ${gif?`GIF 循环 · ${background}`:'透明 PNG / ZIP'}`;
- document.querySelectorAll('.format-option').forEach(el=>el.classList.toggle('selected',!!el.querySelector('input:checked')));
-}
-function openExport(){if(validate()){$($('titleError').hidden?'bodyInput':'titleInput').focus();notify('内容需要调整，请查看输入框下方提示');return;}$('exportError').hidden=true;$('exportProgress').hidden=true;exportSummary();$('exportDialog').showModal();}$('exportButton').onclick=openExport;for(const el of document.querySelectorAll('[name=format],#exportResolution,#exportFps,#gifBackground'))el.onchange=()=>{$('exportError').hidden=true;$('exportProgress').hidden=true;exportSummary();};
-function closeExport(){if(exportController){exportController.abort();$('cancelExport').textContent='正在取消…';}else $('exportDialog').close();}$('cancelExport').onclick=closeExport;document.querySelector('#exportDialog .close-dialog').onclick=closeExport;$('exportDialog').addEventListener('cancel',e=>{if(exportController){e.preventDefault();closeExport();}});
-$('startExport').onclick=async()=>{
- if(exportController)return;const controller=new AbortController();exportController=controller;const snapshot={...settings},effect=selected;const canvas=document.createElement('canvas');[canvas.width,canvas.height]=dimensions(snapshot.ratio,+$('exportResolution').value);const format=document.querySelector('[name=format]:checked').value;const fps=+$('exportFps').value;
- const controls=[...document.querySelectorAll('#exportDialog input,#exportDialog select,#startExport')];controls.forEach(el=>el.disabled=true);$('cancelExport').textContent='取消生成';$('exportError').hidden=true;$('exportProgress').hidden=false;const bar=$('exportProgress').querySelector('progress'),status=$('exportProgress').querySelector('p');bar.value=0;status.textContent='正在准备透明画布…';
- try{let blob,metadata;if(format==='frame'){renderFrame(canvas,effect,snapshot,progress);blob=await toPNG(canvas);metadata={width:canvas.width,height:canvas.height,frameCount:1,format:'PNG'};}else{const exporter=format==='gif'?exportGIF:exportSequence;const result=await exporter({canvas,effect,settings:snapshot,fps,background:$('gifBackground').value,render:renderFrame,signal:controller.signal,onProgress:(done,total)=>{bar.value=done/total*100;status.textContent=`正在生成${format==='gif'?' GIF':''} ${done} / ${total} 帧，请保持此页面打开`;}});blob=result.blob;metadata=result.metadata;}
- if(controller.signal.aborted)throw new DOMException('已取消','AbortError');const extension=format==='sequence'?`-${fps}fps.zip`:format==='gif'?`-${fps}fps-${metadata.background}.gif`:'.png';const filename=`motion-${effect.id}-${canvas.width}x${canvas.height}${extension}`;if(lastDownloadUrl)URL.revokeObjectURL(lastDownloadUrl);lastDownloadUrl=download(blob,filename);lastExport={...metadata,filename,bytes:blob.size};bar.value=100;status.textContent=`已生成 ${filename}（${(blob.size/1024/1024).toFixed(2)} MB）。`;const link=document.createElement('a');link.href=lastDownloadUrl;link.download=filename;link.textContent='未自动下载？点击保存文件';link.style.cssText='display:block;color:#c4f36b;margin-top:10px';status.append(link);notify(format==='gif'?'GIF 动图已生成，请查看浏览器下载':'透明素材已生成，请查看浏览器下载');
- }catch(error){if(error.name==='AbortError'){status.textContent='已取消生成，没有下载文件。';notify('导出已取消');}else{$('exportError').textContent=error.message||'导出失败，请降低分辨率重试。';$('exportError').hidden=false;}}
- finally{exportController=null;controls.forEach(el=>el.disabled=false);$('cancelExport').textContent='关闭';exportSummary();}
+const $ = (id) => document.getElementById(id);
+const read = (key) => {
+  try {
+    const v = JSON.parse(localStorage.getItem(key) || '[]');
+    return Array.isArray(v) ? v.filter((id) => effects.some((e) => e.id === id)) : [];
+  } catch {
+    return [];
+  }
 };
-document.addEventListener('keydown',e=>{if(e.key==='/'&&!['INPUT','SELECT','TEXTAREA'].includes(document.activeElement.tagName)&&!document.querySelector('dialog[open]')){e.preventDefault();$('search').focus();}if(e.key==='?'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)&&!document.querySelector('dialog[open]'))$('helpDialog').showModal();});renderLibrary();syncControls();requestAnimationFrame(tick);
+let selected = effects.find((e) => e.id === 's-treemap'),
+  settings = defaults(selected),
+  favorites = new Set(read('motion:favorites')),
+  recent = read('motion:recent');
+let view = 'all',
+  category = 'story',
+  query = '',
+  style = 'all',
+  format = 'all',
+  playing = !matchMedia('(prefers-reduced-motion: reduce)').matches,
+  progress = 0.3,
+  lastTime = 0,
+  hover = null,
+  toastTimer,
+  exportController = null,
+  lastExport = null,
+  lastDownloadUrl = null;
+const notify = (message) => {
+  $('toast').textContent = message;
+  $('toast').hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => ($('toast').hidden = true), 3000);
+};
+const persist = () => {
+  try {
+    localStorage.setItem('motion:favorites', JSON.stringify([...favorites]));
+    localStorage.setItem('motion:recent', JSON.stringify(recent));
+  } catch {
+    notify('当前浏览器无法保存收藏，本次仍可正常使用。');
+  }
+};
+function state() {
+  return {
+    selectedId: selected.id,
+    effectName: selected.name,
+    settings: { ...settings, image: settings.image ? 'local image' : null },
+    visibleIds: filtered().map((e) => e.id),
+    favorites: [...favorites],
+    playing,
+    progress,
+    lastExport,
+  };
+}
+function filtered() {
+  return effects
+    .filter(
+      (e) =>
+        (view !== 'favorites' || favorites.has(e.id)) &&
+        (view !== 'recent' || recent.includes(e.id)) &&
+        (category === 'all' ||
+          (category === 'new'
+            ? e.release === 3
+            : category === 'story'
+              ? e.collection === 'story'
+              : e.category === category)) &&
+        (style === 'all' || e.style === style) &&
+        (format === 'all' || (e.ratio || '16:9') === format) &&
+        (!query ||
+          `${e.name} ${e.style} ${categories.find((c) => c[0] === e.category)[2]} ${e.title} ${e.tags || ''}`
+            .toLowerCase()
+            .includes(query.toLowerCase())),
+    )
+    .sort((a, b) =>
+      view === 'recent'
+        ? recent.indexOf(a.id) - recent.indexOf(b.id)
+        : (b.release || Number(!!b.isNew)) - (a.release || Number(!!a.isNew)),
+    );
+}
+function favorite(id) {
+  favorites.has(id) ? favorites.delete(id) : favorites.add(id);
+  persist();
+  renderLibrary();
+  syncFavorite();
+}
+function syncFavorite() {
+  $('favoriteCount').textContent = favorites.size;
+  $('favoriteButton').setAttribute('aria-pressed', favorites.has(selected.id));
+  $('favoriteButton').textContent = favorites.has(selected.id) ? '♥' : '♡';
+}
+function renderLibrary() {
+  hover = null;
+  const list = filtered();
+  $('effectGrid').replaceChildren();
+  $('resultCount').textContent = `${list.length} 个`;
+  $('emptyState').hidden = list.length > 0;
+  $('resultTitle').textContent =
+    category === 'story'
+      ? '口播解说套装'
+      : category === 'new'
+        ? '形式扩展包'
+        : category !== 'all'
+          ? categories.find((c) => c[0] === category)[2]
+          : view === 'favorites'
+            ? '我的收藏'
+            : view === 'recent'
+              ? '最近使用'
+              : '全部动效';
+  $('libraryGuide').textContent =
+    category === 'story'
+      ? '从三条竖屏参考提炼的原创模板：先出证据 → 逐项解释 → 聚焦重点。点击模板查看参考时间与用法；人物视频与声音需后续剪辑合成。'
+      : '支持按用途搜索：口播、开场、知识、产品、互动、转场。所有动效均可切换画幅。';
+  $('pageTitle').textContent =
+    view === 'favorites'
+      ? '好动效，随时再用。'
+      : view === 'recent'
+        ? '继续你的创作。'
+        : '让画面，多一点精彩。';
+  $('pageSubtitle').textContent =
+    view === 'favorites'
+      ? '你的常用动效，保存在这个浏览器里。'
+      : view === 'recent'
+        ? '最近选择过的动效，都在这里。'
+        : '选一个喜欢的动效，换上你的内容。';
+  for (const e of list) {
+    const article = document.createElement('article');
+    article.className = 'effect-card' + (e.isNew ? ' is-new' : '');
+    const button = document.createElement('button');
+    button.className = 'effect-select';
+    button.dataset.effect = e.id;
+    button.setAttribute('aria-label', `试用${e.name}`);
+    button.setAttribute('aria-pressed', e.id === selected.id);
+    const thumb = document.createElement('div');
+    thumb.className = 'thumb' + (e.ratio === '9:16' ? ' portrait-thumb' : '');
+    thumb.style.background = `linear-gradient(145deg, ${e.color}22, #1b2026)`;
+    const canvas = document.createElement('canvas');
+    [canvas.width, canvas.height] = e.ratio === '9:16' ? [360, 640] : [480, 320];
+    canvas.setAttribute('aria-hidden', 'true');
+    thumb.append(canvas);
+    const alpha = document.createElement('span');
+    alpha.className = 'card-alpha';
+    alpha.textContent = e.ratio === '9:16' ? '9:16' : '▧';
+    const duration = document.createElement('span');
+    duration.className = 'duration-pill';
+    duration.textContent = `${e.duration || 3}.0s`;
+    thumb.append(alpha, duration);
+    const info = document.createElement('div');
+    info.className = 'card-info';
+    const title = document.createElement('span');
+    title.className = 'card-title';
+    title.textContent = e.name;
+    const arrow = document.createElement('span');
+    arrow.textContent = '↗';
+    info.append(title, arrow);
+    const desc = document.createElement('div');
+    desc.className = 'card-category';
+    desc.textContent = `${e.style} · ${categories.find((c) => c[0] === e.category)[2]}`;
+    button.append(thumb, info, desc);
+    button.onclick = () => selectEffect(e.id, true);
+    button.onpointerenter = () => (hover = { canvas, e, start: performance.now() });
+    button.onpointerleave = () => {
+      hover = null;
+      renderFrame(canvas, e, defaults(e), e.category === 'transition' ? 0.28 : 0.48);
+    };
+    button.onfocus = () => (hover = { canvas, e, start: performance.now() });
+    button.onblur = button.onpointerleave;
+    const star = document.createElement('button');
+    star.className = 'card-favorite';
+    star.setAttribute('aria-label', `收藏${e.name}`);
+    star.setAttribute('aria-pressed', favorites.has(e.id));
+    star.textContent = favorites.has(e.id) ? '♥' : '♡';
+    star.onclick = () => favorite(e.id);
+    article.append(button, star);
+    $('effectGrid').append(article);
+    renderFrame(canvas, e, defaults(e), e.category === 'transition' ? 0.28 : 0.48);
+  }
+  document
+    .querySelectorAll('[data-view]')
+    .forEach((b) => b.classList.toggle('active', b.dataset.view === view && category === 'all'));
+  document
+    .querySelectorAll('[data-category]')
+    .forEach((b) => b.classList.toggle('active', b.dataset.category === category));
+  document
+    .querySelectorAll('[data-collection]')
+    .forEach((b) =>
+      b.classList.toggle('active', b.dataset.collection === category && view === 'all'),
+    );
+  syncFavorite();
+}
+function selectEffect(id, scroll = false) {
+  const e = effects.find((e) => e.id === id);
+  if (!e) throw new Error('未找到该动效');
+  selected = e;
+  settings = defaults(e);
+  recent = [id, ...recent.filter((x) => x !== id)].slice(0, 24);
+  persist();
+  progress = 0.05;
+  syncControls();
+  renderLibrary();
+  if (scroll && innerWidth <= 700)
+    document.querySelector('.inspector').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function syncPreviewSize() {
+  const mobile = matchMedia('(max-width:700px)').matches,
+    maxWidth = mobile
+      ? settings.ratio === '9:16'
+        ? 152
+        : settings.ratio === '1:1'
+          ? 270
+          : 550
+      : settings.ratio === '9:16'
+        ? 92
+        : settings.ratio === '1:1'
+          ? 164
+          : 292;
+  $('previewStage').style.width = `min(calc(100% - ${mobile ? 40 : 36}px), ${maxWidth}px)`;
+}
+function validate(show = true) {
+  const error = validateContent(selected, settings.title),
+    bodyError = validateBody(selected, settings.body);
+  if (show) {
+    $('titleError').textContent = error;
+    $('titleError').hidden = !error;
+    $('titleInput').setAttribute('aria-invalid', !!error);
+    $('bodyError').textContent = bodyError;
+    $('bodyError').hidden = !bodyError;
+    $('bodyInput').setAttribute('aria-invalid', !!bodyError);
+  }
+  return error || bodyError;
+}
+function syncControls() {
+  $('effectName').textContent = selected.name;
+  for (const k of ['title', 'subtitle']) $(k + 'Input').value = settings[k];
+  for (const k of ['ratio', 'duration', 'intensity', 'scale']) $(k).value = settings[k];
+  $('extraContent').hidden = selected.engine
+    ? !selected.bodyMode
+    : !selected.kind || ['wordmark', 'ribbon'].includes(selected.kind);
+  $('bodyInput').value = settings.body;
+  $('badgeInput').value = settings.badge;
+  $('schemeSelect').value = settings.scheme;
+  $('badgeInput').parentElement.hidden =
+    !!selected.engine && (selected.category !== 'portrait' || selected.engine === 'story');
+  $('bodyHint').textContent =
+    selected.bodyMode === 'series'
+      ? `每行「名称:数值」，2–${selected.maxLines} 项，例如「创作:45」。示例数据请替换；不支持负数。`
+      : selected.bodyMode === 'lines'
+        ? `每行一项，最多 ${selected.maxLines} 项。`
+        : ['compare', 'question'].includes(selected.kind)
+          ? '每行一项，最多 2 项。'
+          : ['stack', 'checklist', 'timeline'].includes(selected.kind)
+            ? '每行一项，最多 3 项。'
+            : '支持换行，最多 180 字；会自动适配版式。';
+  if (selected.bodyHint) $('bodyHint').textContent = selected.bodyHint;
+  $('schemeNote').textContent =
+    (settings.scheme === 'free'
+      ? '使用下方色板自由调整。'
+      : selected.kind || selected.engine
+        ? '只改变当前动效，其他模板保持各自风格。'
+        : '原有模板使用方案强调色；完整成套效果请选新卡片。') +
+    (settings.scheme.startsWith('lexseek') ? ' 品牌亮色 / 暗色均可选。' : '');
+  $('safeButton').hidden = settings.ratio !== '9:16';
+  $('safeGuide').hidden =
+    settings.ratio !== '9:16' || $('safeButton').getAttribute('aria-pressed') !== 'true';
+  $('cardNote').hidden = !(selected.kind || selected.engine);
+  $('cardNote').textContent =
+    selected.category === 'transition'
+      ? '覆盖层转场 · 在片段中点切换底层视频'
+      : selected.category === 'caption'
+        ? '固定节奏字幕 · 非自动语音识别 / 对齐'
+        : selected.variant === 'waveform'
+          ? '装饰波形 · 不随音频变化'
+          : selected.variant === 'film'
+            ? '单图走格 · 当前重复展示同一张图片'
+            : selected.category === 'media'
+              ? '替换本地图片 · 图片居中裁切 · 边框外透明'
+              : selected.category === 'data'
+                ? '示例数值可修改 · 图形外透明 · 面板底色保留'
+                : selected.kind || selected.category === 'portrait'
+                  ? '卡片外透明 · 卡片底色保留 · 安全区不导出'
+                  : '只导出动画元素 · 背景与安全区不导出';
+  if (selected.usage) $('cardNote').textContent = selected.usage;
+  $('referenceNote').replaceChildren();
+  $('referenceNote').hidden = !selected.source;
+  if (selected.source) {
+    const source = storySources[selected.source],
+      link = document.createElement('a');
+    link.href = source.url + '?t=' + selected.at;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = `参考：${source.name} · ${Math.floor(selected.at / 60)}:${String(selected.at % 60).padStart(2, '0')} ↗`;
+    $('referenceNote').append(link);
+  }
+  $('titleInput').placeholder =
+    selected.id === 'bars'
+      ? '例如 12,28,45,68'
+      : selected.numeric || ['counter', 'progress'].includes(selected.id)
+        ? '填写数值'
+        : '写下你的标题';
+  $('titleInput').disabled = selected.category === 'transition';
+  $('subtitleInput').disabled = selected.category === 'transition';
+  $('uploadLabel').hidden =
+    selected.category === 'transition' || (!!selected.engine && !selected.imageRole);
+  $('uploadLabel').querySelector('span').textContent = settings.image
+    ? '✓ 图片已添加（仅本地）'
+    : selected.imageRole
+      ? '＋ 添加' + selected.imageRole
+      : '＋ 添加 Logo / 图片';
+  $('removeImage').hidden = !settings.image;
+  for (const id of ['positionControl', 'scale']) {
+    const node = $(id);
+    node.style.opacity = selected.category === 'transition' ? '.4' : '1';
+    if (node.tagName === 'INPUT') node.disabled = selected.category === 'transition';
+    else
+      node
+        .querySelectorAll('button')
+        .forEach((b) => (b.disabled = selected.category === 'transition'));
+  }
+  document
+    .querySelectorAll('[data-position]')
+    .forEach((b) => b.classList.toggle('selected', b.dataset.position === settings.position));
+  document.querySelectorAll('.swatch').forEach((b) => {
+    b.disabled = settings.scheme !== 'free';
+    b.classList.toggle(
+      'selected',
+      b.dataset.color === settings.color && settings.scheme === 'free',
+    );
+    b.setAttribute(
+      'aria-pressed',
+      b.dataset.color === settings.color && settings.scheme === 'free',
+    );
+  });
+  const [w, h] = dimensions(settings.ratio, 540);
+  $('preview').width = w;
+  $('preview').height = h;
+  $('previewStage').style.aspectRatio = `${w}/${h}`;
+  syncPreviewSize();
+  $('previewStage').style.minHeight = '0';
+  $('previewStage').style.marginInline = 'auto';
+  $('dimensions').textContent = dimensions(settings.ratio, 1080).join(' × ');
+  validate();
+  syncFavorite();
+  draw();
+}
+function draw() {
+  if (!$('previewBody').hidden) renderFrame($('preview'), selected, settings, progress);
+  if ($('largePreviewDialog').open)
+    renderFrame($('largePreviewCanvas'), selected, settings, progress);
+  $('scrub').value = Math.round(progress * 1000);
+  $('timeDisplay').textContent =
+    `${(progress * settings.duration).toFixed(1)} / ${settings.duration.toFixed(1)}s`;
+  $('playButton').textContent = playing ? 'Ⅱ' : '▶';
+  $('playButton').setAttribute('aria-label', playing ? '暂停预览' : '播放预览');
+}
+function tick(time) {
+  const delta = lastTime ? Math.min(time - lastTime, 100) : 0;
+  lastTime = time;
+  if (playing && !document.hidden && !$('exportDialog').open && !$('helpDialog').open)
+    progress = (progress + delta / (settings.duration * 1000)) % 1;
+  draw();
+  if (hover) {
+    const ms = (hover.e.duration || 3) * 1000;
+    renderFrame(hover.canvas, hover.e, defaults(hover.e), ((time - hover.start) % ms) / ms);
+  }
+  requestAnimationFrame(tick);
+}
+for (const [id, icon, name] of categories) {
+  const b = document.createElement('button');
+  b.className = 'nav-item';
+  b.dataset.category = id;
+  const span = document.createElement('span');
+  span.textContent = icon;
+  const count = document.createElement('small');
+  count.textContent = effects.filter((e) => e.category === id).length;
+  b.append(span, document.createTextNode(name), count);
+  b.onclick = () => {
+    category = id;
+    view = 'all';
+    renderLibrary();
+  };
+  $('categories').append(b);
+}
+for (const [color, name] of colors) {
+  const b = document.createElement('button');
+  b.className = 'swatch';
+  b.style.background = color;
+  b.dataset.color = color;
+  b.setAttribute('aria-label', `配色：${name}`);
+  b.onclick = () => {
+    settings.color = color;
+    syncControls();
+  };
+  $('palette').append(b);
+}
+document.querySelectorAll('[data-collection]').forEach(
+  (b) =>
+    (b.onclick = () => {
+      view = 'all';
+      category = b.dataset.collection;
+      query = '';
+      style = 'all';
+      format = 'all';
+      $('search').value = '';
+      $('styleFilter').value = 'all';
+      $('formatFilter').value = 'all';
+      renderLibrary();
+    }),
+);
+$('formatFilter').onchange = (e) => {
+  format = e.target.value;
+  renderLibrary();
+};
+$('schemeSelect').onchange = (e) => {
+  if (!schemes.some((s) => s.id === e.target.value)) return;
+  settings.scheme = e.target.value;
+  syncControls();
+};
+for (const key of ['badge', 'body'])
+  $(key + 'Input').oninput = (e) => {
+    settings[key] = e.target.value;
+    validate();
+    draw();
+  };
+$('safeButton').onclick = () => {
+  const on = $('safeButton').getAttribute('aria-pressed') !== 'true';
+  $('safeButton').setAttribute('aria-pressed', on);
+  $('safeGuide').hidden = !on;
+};
+$('expandPreview').onclick = () => {
+  const canvas = $('largePreviewCanvas');
+  [canvas.width, canvas.height] = dimensions(settings.ratio, 540);
+  $('largePreviewTitle').textContent = selected.name;
+  $('largePreviewDialog').showModal();
+  draw();
+};
+$('closeLargePreview').onclick = () => $('largePreviewDialog').close();
+$('togglePreview').onclick = () => {
+  const expanded = $('togglePreview').getAttribute('aria-expanded') === 'true';
+  $('togglePreview').setAttribute('aria-expanded', String(!expanded));
+  $('previewBody').hidden = expanded;
+  $('previewToggleLabel').textContent = expanded ? '展开' : '收起';
+  if (!expanded) draw();
+};
+matchMedia('(max-width:700px)').addEventListener?.('change', syncPreviewSize);
+$('totalCount').textContent = effects.length;
+document.querySelectorAll('[data-view]').forEach(
+  (b) =>
+    (b.onclick = () => {
+      view = b.dataset.view;
+      category = 'all';
+      renderLibrary();
+    }),
+);
+$('search').oninput = (e) => {
+  query = e.target.value.trim();
+  renderLibrary();
+};
+$('styleFilter').onchange = (e) => {
+  style = e.target.value;
+  renderLibrary();
+};
+$('clearFilters').onclick = () => {
+  query = '';
+  style = 'all';
+  format = 'all';
+  category = 'all';
+  view = 'all';
+  $('search').value = '';
+  $('styleFilter').value = 'all';
+  $('formatFilter').value = 'all';
+  renderLibrary();
+};
+$('favoriteButton').onclick = () => favorite(selected.id);
+for (const k of ['title', 'subtitle'])
+  $(k + 'Input').oninput = (e) => {
+    settings[k] = e.target.value;
+    validate();
+    draw();
+  };
+for (const k of ['ratio', 'duration', 'intensity', 'scale'])
+  $(k).oninput = (e) => {
+    settings[k] = k === 'ratio' ? e.target.value : +e.target.value;
+    syncControls();
+  };
+document.querySelectorAll('[data-position]').forEach(
+  (b) =>
+    (b.onclick = () => {
+      settings.position = b.dataset.position;
+      syncControls();
+    }),
+);
+document.querySelectorAll('[data-bg]').forEach(
+  (b) =>
+    (b.onclick = () => {
+      document
+        .querySelectorAll('[data-bg]')
+        .forEach((x) => x.classList.toggle('selected', x === b));
+      $('previewStage').className = `preview-stage ${b.dataset.bg}`;
+    }),
+);
+$('playButton').onclick = () => {
+  playing = !playing;
+  draw();
+};
+$('scrub').oninput = (e) => {
+  playing = false;
+  progress = +e.target.value / 1000;
+  draw();
+};
+$('replayButton').onclick = () => {
+  progress = 0;
+  playing = true;
+  draw();
+};
+$('resetButton').onclick = () => {
+  settings = defaults(selected);
+  $('imageUpload').value = '';
+  syncControls();
+  notify('已恢复该动效的默认内容与样式');
+};
+$('imageUpload').onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (
+    !['image/png', 'image/jpeg', 'image/webp'].includes(file.type) ||
+    file.size > 10 * 1024 * 1024
+  ) {
+    notify('请选择 10 MB 以内的 PNG、JPG 或 WebP 图片');
+    e.target.value = '';
+    return;
+  }
+  const url = URL.createObjectURL(file);
+  try {
+    const im = new Image();
+    im.src = url;
+    await im.decode();
+    if (im.width * im.height > 24000000) throw new Error('图片尺寸过大，请缩小到 2400 万像素以内');
+    settings.image = im;
+    syncControls();
+    notify('图片已加入，未上传到服务器');
+  } catch (error) {
+    notify(error.message || '图片无法读取，请重新选择');
+  } finally {
+    URL.revokeObjectURL(url);
+    e.target.value = '';
+  }
+};
+$('removeImage').onclick = () => {
+  settings.image = null;
+  syncControls();
+};
+for (const id of ['helpButton', 'guideButton']) $(id).onclick = () => $('helpDialog').showModal();
+document
+  .querySelectorAll('#helpDialog .close-dialog')
+  .forEach((b) => (b.onclick = () => $('helpDialog').close()));
+const exportPreferences = {
+  png: { resolution: '1080', fps: '30' },
+  gif: { resolution: '480', fps: '15' },
+};
+let exportMode = 'png';
+function exportSummary() {
+  const format = document.querySelector('[name=format]:checked').value,
+    frame = format === 'frame',
+    gif = format === 'gif',
+    mode = gif ? 'gif' : 'png';
+  if (mode !== exportMode) {
+    exportPreferences[exportMode] = {
+      resolution: $('exportResolution').value,
+      fps: $('exportFps').value,
+    };
+    exportMode = mode;
+    const resolutions = gif
+      ? [
+          [360, '360p · 小体积'],
+          [480, '480p · 推荐'],
+          [720, '720p · 更清晰，文件较大'],
+        ]
+      : [
+          [720, '720p · 快速验证'],
+          [1080, '1080p · 高清'],
+        ];
+    $('exportResolution').replaceChildren(
+      ...resolutions.map(([value, label]) => new Option(label, value)),
+    );
+    $('exportFps').replaceChildren(
+      ...(gif ? [10, 15, 20] : [24, 25, 30]).map(
+        (value) => new Option(`${value} fps${gif && value === 15 ? ' · 推荐' : ''}`, value),
+      ),
+    );
+    $('exportResolution').value = exportPreferences[mode].resolution;
+    $('exportFps').value = exportPreferences[mode].fps;
+  }
+  const [w, h] = dimensions(settings.ratio, +$('exportResolution').value),
+    fps = +$('exportFps').value;
+  $('exportFps').disabled = frame || !!exportController;
+  $('gifOptions').hidden = !gif;
+  $('exportDescription').textContent = gif
+    ? '把当前动效做成循环动图，直接预览或分享。'
+    : '只导出动画本身，保留柔边与半透明效果。';
+  const background = { transparent: '透明（硬边）', white: '白底', black: '黑底' }[
+    $('gifBackground').value
+  ];
+  $('exportSummary').textContent = frame
+    ? `${w} × ${h} · 当前 ${(progress * settings.duration).toFixed(2)} 秒 · RGBA 透明 PNG`
+    : `${w} × ${h} · ${settings.duration} 秒 · ${Math.round(fps * settings.duration)} 帧 · ${gif ? `GIF 循环 · ${background}` : '透明 PNG / ZIP'}`;
+  document
+    .querySelectorAll('.format-option')
+    .forEach((el) => el.classList.toggle('selected', !!el.querySelector('input:checked')));
+}
+function openExport() {
+  if (validate()) {
+    $($('titleError').hidden ? 'bodyInput' : 'titleInput').focus();
+    notify('内容需要调整，请查看输入框下方提示');
+    return;
+  }
+  $('exportError').hidden = true;
+  $('exportProgress').hidden = true;
+  exportSummary();
+  $('exportDialog').showModal();
+}
+$('exportButton').onclick = openExport;
+for (const el of document.querySelectorAll(
+  '[name=format],#exportResolution,#exportFps,#gifBackground',
+))
+  el.onchange = () => {
+    $('exportError').hidden = true;
+    $('exportProgress').hidden = true;
+    exportSummary();
+  };
+function closeExport() {
+  if (exportController) {
+    exportController.abort();
+    $('cancelExport').textContent = '正在取消…';
+  } else $('exportDialog').close();
+}
+$('cancelExport').onclick = closeExport;
+document.querySelector('#exportDialog .close-dialog').onclick = closeExport;
+$('exportDialog').addEventListener('cancel', (e) => {
+  if (exportController) {
+    e.preventDefault();
+    closeExport();
+  }
+});
+$('startExport').onclick = async () => {
+  if (exportController) return;
+  const controller = new AbortController();
+  exportController = controller;
+  const snapshot = { ...settings },
+    effect = selected;
+  const canvas = document.createElement('canvas');
+  [canvas.width, canvas.height] = dimensions(snapshot.ratio, +$('exportResolution').value);
+  const format = document.querySelector('[name=format]:checked').value;
+  const fps = +$('exportFps').value;
+  const controls = [
+    ...document.querySelectorAll('#exportDialog input,#exportDialog select,#startExport'),
+  ];
+  controls.forEach((el) => (el.disabled = true));
+  $('cancelExport').textContent = '取消生成';
+  $('exportError').hidden = true;
+  $('exportProgress').hidden = false;
+  const bar = $('exportProgress').querySelector('progress'),
+    status = $('exportProgress').querySelector('p');
+  bar.value = 0;
+  status.textContent = '正在准备透明画布…';
+  try {
+    let blob, metadata;
+    if (format === 'frame') {
+      renderFrame(canvas, effect, snapshot, progress);
+      blob = await toPNG(canvas);
+      metadata = { width: canvas.width, height: canvas.height, frameCount: 1, format: 'PNG' };
+    } else {
+      const exporter = format === 'gif' ? exportGIF : exportSequence;
+      const result = await exporter({
+        canvas,
+        effect,
+        settings: snapshot,
+        fps,
+        background: $('gifBackground').value,
+        render: renderFrame,
+        signal: controller.signal,
+        onProgress: (done, total) => {
+          bar.value = (done / total) * 100;
+          status.textContent = `正在生成${format === 'gif' ? ' GIF' : ''} ${done} / ${total} 帧，请保持此页面打开`;
+        },
+      });
+      blob = result.blob;
+      metadata = result.metadata;
+    }
+    if (controller.signal.aborted) throw new DOMException('已取消', 'AbortError');
+    const extension =
+      format === 'sequence'
+        ? `-${fps}fps.zip`
+        : format === 'gif'
+          ? `-${fps}fps-${metadata.background}.gif`
+          : '.png';
+    const filename = `motion-${effect.id}-${canvas.width}x${canvas.height}${extension}`;
+    if (lastDownloadUrl) URL.revokeObjectURL(lastDownloadUrl);
+    lastDownloadUrl = download(blob, filename);
+    lastExport = { ...metadata, filename, bytes: blob.size };
+    bar.value = 100;
+    status.textContent = `已生成 ${filename}（${(blob.size / 1024 / 1024).toFixed(2)} MB）。`;
+    const link = document.createElement('a');
+    link.href = lastDownloadUrl;
+    link.download = filename;
+    link.textContent = '未自动下载？点击保存文件';
+    link.style.cssText = 'display:block;color:#c4f36b;margin-top:10px';
+    status.append(link);
+    notify(
+      format === 'gif' ? 'GIF 动图已生成，请查看浏览器下载' : '透明素材已生成，请查看浏览器下载',
+    );
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      status.textContent = '已取消生成，没有下载文件。';
+      notify('导出已取消');
+    } else {
+      $('exportError').textContent = error.message || '导出失败，请降低分辨率重试。';
+      $('exportError').hidden = false;
+    }
+  } finally {
+    exportController = null;
+    controls.forEach((el) => (el.disabled = false));
+    $('cancelExport').textContent = '关闭';
+    exportSummary();
+  }
+};
+document.addEventListener('keydown', (e) => {
+  if (
+    e.key === '/' &&
+    !['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName) &&
+    !document.querySelector('dialog[open]')
+  ) {
+    e.preventDefault();
+    $('search').focus();
+  }
+  if (
+    e.key === '?' &&
+    !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName) &&
+    !document.querySelector('dialog[open]')
+  )
+    $('helpDialog').showModal();
+});
+renderLibrary();
+syncControls();
+requestAnimationFrame(tick);
 // Optional WebMCP uses the same state/actions as the UI and never starts a download.
-if(document.modelContext?.registerTool){const lifecycle=new AbortController();const register=t=>{try{Promise.resolve(document.modelContext.registerTool(t,{signal:lifecycle.signal})).catch(()=>{});}catch{}};
-register({name:'read_motion_workbench',title:'查看动效工作台',description:'Read available animation IDs and visible settings without changing the workbench.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,untrustedContentHint:true},execute:input=>{if(input&&Object.keys(input).length)throw new Error('此工具不接受参数');return {effects:effects.map(({id,name,category})=>({id,name,category})),...state()};}});
-register({name:'configure_motion',title:'选择并配置动效',description:'Select a template and configure its text, card body and optional palette in the visible workbench. Does not export or download.',inputSchema:{type:'object',properties:{effectId:{type:'string',enum:effects.map(e=>e.id)},title:{type:'string',maxLength:40},subtitle:{type:'string',maxLength:70},body:{type:'string',maxLength:180},badge:{type:'string',maxLength:20},scheme:{type:'string',enum:schemes.map(s=>s.id)},ratio:{type:'string',enum:['16:9','9:16','1:1']}},required:['effectId'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:true},execute:input=>{
-const keys=['effectId','title','subtitle','ratio','body','badge','scheme'];if(!input||Object.keys(input).some(k=>!keys.includes(k)))throw new Error('参数无效');const effect=effects.find(e=>e.id===input.effectId);if(!effect)throw new Error('未找到该动效');if(input.ratio&&!['16:9','9:16','1:1'].includes(input.ratio))throw new Error('画幅无效');if(input.scheme!==undefined&&!schemes.some(s=>s.id===input.scheme))throw new Error('配色方案无效');for(const [key,max]of [['title',40],['subtitle',70],['body',180],['badge',20]])if(input[key]!==undefined&&(typeof input[key]!=='string'||input[key].length>max))throw new Error('文字长度无效');const error=validateContent(effect,input.title??effect.title)||validateBody(effect,input.body??effect.body??'');if(error)throw new Error(error);selectEffect(effect.id);for(const key of keys.filter(k=>k!=='effectId'))if(input[key]!==undefined)settings[key]=input[key];syncControls();return state();}});addEventListener('pagehide',()=>lifecycle.abort(),{once:true});}
+if (document.modelContext?.registerTool) {
+  const lifecycle = new AbortController();
+  const register = (t) => {
+    try {
+      Promise.resolve(document.modelContext.registerTool(t, { signal: lifecycle.signal })).catch(
+        () => {},
+      );
+    } catch {}
+  };
+  register({
+    name: 'read_motion_workbench',
+    title: '查看动效工作台',
+    description:
+      'Read available animation IDs and visible settings without changing the workbench.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, untrustedContentHint: true },
+    execute: (input) => {
+      if (input && Object.keys(input).length) throw new Error('此工具不接受参数');
+      return {
+        effects: effects.map(({ id, name, category }) => ({ id, name, category })),
+        ...state(),
+      };
+    },
+  });
+  register({
+    name: 'configure_motion',
+    title: '选择并配置动效',
+    description:
+      'Select a template and configure its text, card body and optional palette in the visible workbench. Does not export or download.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        effectId: { type: 'string', enum: effects.map((e) => e.id) },
+        title: { type: 'string', maxLength: 40 },
+        subtitle: { type: 'string', maxLength: 70 },
+        body: { type: 'string', maxLength: 180 },
+        badge: { type: 'string', maxLength: 20 },
+        scheme: { type: 'string', enum: schemes.map((s) => s.id) },
+        ratio: { type: 'string', enum: ['16:9', '9:16', '1:1'] },
+      },
+      required: ['effectId'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, untrustedContentHint: true },
+    execute: (input) => {
+      const keys = ['effectId', 'title', 'subtitle', 'ratio', 'body', 'badge', 'scheme'];
+      if (!input || Object.keys(input).some((k) => !keys.includes(k))) throw new Error('参数无效');
+      const effect = effects.find((e) => e.id === input.effectId);
+      if (!effect) throw new Error('未找到该动效');
+      if (input.ratio && !['16:9', '9:16', '1:1'].includes(input.ratio))
+        throw new Error('画幅无效');
+      if (input.scheme !== undefined && !schemes.some((s) => s.id === input.scheme))
+        throw new Error('配色方案无效');
+      for (const [key, max] of [
+        ['title', 40],
+        ['subtitle', 70],
+        ['body', 180],
+        ['badge', 20],
+      ])
+        if (input[key] !== undefined && (typeof input[key] !== 'string' || input[key].length > max))
+          throw new Error('文字长度无效');
+      const error =
+        validateContent(effect, input.title ?? effect.title) ||
+        validateBody(effect, input.body ?? effect.body ?? '');
+      if (error) throw new Error(error);
+      selectEffect(effect.id);
+      for (const key of keys.filter((k) => k !== 'effectId'))
+        if (input[key] !== undefined) settings[key] = input[key];
+      syncControls();
+      return state();
+    },
+  });
+  addEventListener('pagehide', () => lifecycle.abort(), { once: true });
+}

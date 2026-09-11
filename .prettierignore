@@ -1,0 +1,6 @@
+dist/vendor/
+node_modules/
+test-results/
+artifacts/
+coverage/
+package-lock.json

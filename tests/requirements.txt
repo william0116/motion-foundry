@@ -1,0 +1,2 @@
+# Optional independent GIF validation only; not needed to run the website.
+Pillow>=11.0,<13

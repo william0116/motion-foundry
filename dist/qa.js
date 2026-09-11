@@ -1,16 +1,145 @@
-import {effects,defaults,dimensions,validateContent} from './data.js';
-import {renderFrame} from './renderer.js';
-import {toPNG,zipFiles,crc32,exportSequence} from './exporter.js';
-import {testCards} from './card-tests.js';
-import {testExpanded} from './expanded-tests.js';
-import {testStory} from './story-tests.js';
-import {testGIF} from './gif-tests.js';
-const out=document.getElementById('results');
-document.getElementById('run').onclick=async()=>{const results=[];const check=(name,ok,details)=>{results.push({name,pass:!!ok,details});out.textContent=JSON.stringify(results,null,2);};document.getElementById('gallery').replaceChildren();
-document.getElementById('run').disabled=true;await new Promise(resolve=>setTimeout(resolve,0));
-try{let frames=0;for(const effect of effects){let different=false,last='';for(const ratio of ['16:9','9:16','1:1']){const canvas=document.createElement('canvas');[canvas.width,canvas.height]=dimensions(ratio,180);const settings={...defaults(effect),ratio};for(const p of [0,.12,.48,.73,1]){renderFrame(canvas,effect,settings,p);const data=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;const hash=crc32(data);if(last&&last!==hash)different=true;last=hash;frames++;renderFrame(canvas,effect,settings,p);if(hash!==crc32(canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data))throw new Error(effect.id+' 非确定性渲染');}if(ratio===(effect.ratio||'16:9')){renderFrame(canvas,effect,settings,.58);canvas.title=effect.name;document.getElementById('gallery').append(canvas);}}check(effect.name+'：三画幅、五时间点',different,'确定性渲染');}check('共完成渲染帧数',frames===effects.length*15,frames);
-const canvas=document.createElement('canvas');[canvas.width,canvas.height]=dimensions('16:9',720);renderFrame(canvas,effects[0],defaults(effects[0]),.48);const blob=await toPNG(canvas),bitmap=await createImageBitmap(blob),decoded=document.createElement('canvas');decoded.width=bitmap.width;decoded.height=bitmap.height;decoded.getContext('2d').drawImage(bitmap,0,0);const pixels=decoded.getContext('2d').getImageData(0,0,decoded.width,decoded.height).data;let clear=0,partial=0,opaque=0;for(let i=3;i<pixels.length;i+=4){pixels[i]===0?clear++:pixels[i]===255?opaque++:partial++;}check('导出 PNG 解码后保留真实 Alpha',clear>0&&partial>0&&opaque>0,{width:bitmap.width,height:bitmap.height,transparentPixels:clear,partialPixels:partial,opaquePixels:opaque});bitmap.close();
-const result=await exportSequence({canvas,effect:effects[0],settings:{...defaults(effects[0]),duration:2},fps:24,render:renderFrame,signal:new AbortController().signal,onProgress:()=>{}});const bytes=new Uint8Array(await result.blob.arrayBuffer()),v=new DataView(bytes.buffer);let offset=0,count=0,allCrc=true;while(v.getUint32(offset,true)===0x04034b50){const len=v.getUint32(offset+18,true),n=v.getUint16(offset+26,true),extra=v.getUint16(offset+28,true),start=offset+30+n+extra;allCrc&&=v.getUint32(offset+14,true)===crc32(bytes.slice(start,start+len));offset=start+len;count++;}check('48 帧 ZIP 结构与逐文件 CRC',count===50&&allCrc,{entries:count,bytes:bytes.length,pngFrames:result.metadata.frameCount});
-const controller=new AbortController();controller.abort();let cancelled=false;try{await exportSequence({canvas,effect:effects[0],settings:defaults(effects[0]),fps:24,render:renderFrame,signal:controller.signal,onProgress:()=>{}});}catch(e){cancelled=e.name==='AbortError';}check('取消信号中断序列生成',cancelled);check('无效数字 / 超范围 / 空标题校验',!!validateContent(effects.find(e=>e.id==='progress'),'101')&&!!validateContent(effects.find(e=>e.id==='bars'),'a,b')&&!!validateContent(effects[0],''));
-await testCards(check);await testExpanded(check);await testStory(check);await testGIF(check);out.textContent=JSON.stringify({passed:results.filter(r=>r.pass).length,total:results.length,results},null,2);
-}catch(error){check('测试执行异常',false,String(error));}finally{document.getElementById('run').disabled=false;}};
+import { effects, defaults, dimensions, validateContent } from './data.js';
+import { renderFrame } from './renderer.js';
+import { toPNG, zipFiles, crc32, exportSequence } from './exporter.js';
+import { testCards } from './card-tests.js';
+import { testExpanded } from './expanded-tests.js';
+import { testStory } from './story-tests.js';
+import { testGIF } from './gif-tests.js';
+const out = document.getElementById('results');
+document.getElementById('run').onclick = async () => {
+  const results = [];
+  const check = (name, ok, details) => {
+    results.push({ name, pass: !!ok, details });
+    out.textContent = JSON.stringify(results, null, 2);
+  };
+  document.getElementById('gallery').replaceChildren();
+  document.getElementById('run').disabled = true;
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  try {
+    let frames = 0;
+    for (const effect of effects) {
+      let different = false,
+        last = '';
+      for (const ratio of ['16:9', '9:16', '1:1']) {
+        const canvas = document.createElement('canvas');
+        [canvas.width, canvas.height] = dimensions(ratio, 180);
+        const settings = { ...defaults(effect), ratio };
+        for (const p of [0, 0.12, 0.48, 0.73, 1]) {
+          renderFrame(canvas, effect, settings, p);
+          const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+          const hash = crc32(data);
+          if (last && last !== hash) different = true;
+          last = hash;
+          frames++;
+          renderFrame(canvas, effect, settings, p);
+          if (
+            hash !==
+            crc32(canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data)
+          )
+            throw new Error(effect.id + ' 非确定性渲染');
+        }
+        if (ratio === (effect.ratio || '16:9')) {
+          renderFrame(canvas, effect, settings, 0.58);
+          canvas.title = effect.name;
+          document.getElementById('gallery').append(canvas);
+        }
+      }
+      check(effect.name + '：三画幅、五时间点', different, '确定性渲染');
+    }
+    check('共完成渲染帧数', frames === effects.length * 15, frames);
+    const canvas = document.createElement('canvas');
+    [canvas.width, canvas.height] = dimensions('16:9', 720);
+    renderFrame(canvas, effects[0], defaults(effects[0]), 0.48);
+    const blob = await toPNG(canvas),
+      bitmap = await createImageBitmap(blob),
+      decoded = document.createElement('canvas');
+    decoded.width = bitmap.width;
+    decoded.height = bitmap.height;
+    decoded.getContext('2d').drawImage(bitmap, 0, 0);
+    const pixels = decoded.getContext('2d').getImageData(0, 0, decoded.width, decoded.height).data;
+    let clear = 0,
+      partial = 0,
+      opaque = 0;
+    for (let i = 3; i < pixels.length; i += 4) {
+      pixels[i] === 0 ? clear++ : pixels[i] === 255 ? opaque++ : partial++;
+    }
+    check('导出 PNG 解码后保留真实 Alpha', clear > 0 && partial > 0 && opaque > 0, {
+      width: bitmap.width,
+      height: bitmap.height,
+      transparentPixels: clear,
+      partialPixels: partial,
+      opaquePixels: opaque,
+    });
+    bitmap.close();
+    const result = await exportSequence({
+      canvas,
+      effect: effects[0],
+      settings: { ...defaults(effects[0]), duration: 2 },
+      fps: 24,
+      render: renderFrame,
+      signal: new AbortController().signal,
+      onProgress: () => {},
+    });
+    const bytes = new Uint8Array(await result.blob.arrayBuffer()),
+      v = new DataView(bytes.buffer);
+    let offset = 0,
+      count = 0,
+      allCrc = true;
+    while (v.getUint32(offset, true) === 0x04034b50) {
+      const len = v.getUint32(offset + 18, true),
+        n = v.getUint16(offset + 26, true),
+        extra = v.getUint16(offset + 28, true),
+        start = offset + 30 + n + extra;
+      allCrc &&= v.getUint32(offset + 14, true) === crc32(bytes.slice(start, start + len));
+      offset = start + len;
+      count++;
+    }
+    check('48 帧 ZIP 结构与逐文件 CRC', count === 50 && allCrc, {
+      entries: count,
+      bytes: bytes.length,
+      pngFrames: result.metadata.frameCount,
+    });
+    const controller = new AbortController();
+    controller.abort();
+    let cancelled = false;
+    try {
+      await exportSequence({
+        canvas,
+        effect: effects[0],
+        settings: defaults(effects[0]),
+        fps: 24,
+        render: renderFrame,
+        signal: controller.signal,
+        onProgress: () => {},
+      });
+    } catch (e) {
+      cancelled = e.name === 'AbortError';
+    }
+    check('取消信号中断序列生成', cancelled);
+    check(
+      '无效数字 / 超范围 / 空标题校验',
+      !!validateContent(
+        effects.find((e) => e.id === 'progress'),
+        '101',
+      ) &&
+        !!validateContent(
+          effects.find((e) => e.id === 'bars'),
+          'a,b',
+        ) &&
+        !!validateContent(effects[0], ''),
+    );
+    await testCards(check);
+    await testExpanded(check);
+    await testStory(check);
+    await testGIF(check);
+    out.textContent = JSON.stringify(
+      { passed: results.filter((r) => r.pass).length, total: results.length, results },
+      null,
+      2,
+    );
+  } catch (error) {
+    check('测试执行异常', false, String(error));
+  } finally {
+    document.getElementById('run').disabled = false;
+  }
+};
