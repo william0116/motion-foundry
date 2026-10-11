@@ -72,9 +72,26 @@ Windows 对应解释器为 `.venv\Scripts\python.exe`。测试输出目录会打
 
 浏览器 QA 在支持 `ImageDecoder` 的 Chromium 中包含额外 GIF 像素解码检查；不支持时会跳过对应三项，不能把较少的总项数当成相同的覆盖度。自动化不覆盖声音、真实剪辑软件导入、AE 逐像素对照或完整无障碍验收。
 
-## 可选的浏览器工具接口
+## 可选的浏览器工具接口（WebMCP）
 
-当浏览器提供 `document.modelContext.registerTool` 时，工作台会注册受控的读取与配置操作。该接口是渐进增强，不是通用 AI 后端；普通浏览器不提供它也能完成全部手动制作流程。导出仍由用户在界面确认。
+当浏览器提供 `document.modelContext.registerTool` 时，工作台会注册受控的读取、配置与导出操作（`dist/webmcp-tools.js`）。该接口是渐进增强，不是通用 AI 后端；普通浏览器不提供它也能完成全部手动制作流程。
+
+注册的工具：
+
+| 工具 | 行为 | 注解 |
+| --- | --- | --- |
+| `read_motion_workbench` | 读取模板 ID 列表与当前可见设置 | 只读 |
+| `configure_motion` | 选择模板并配置文字、正文与配色（不导出） | 写操作，不改工作台导出状态 |
+| `describe_template` | 返回单个模板的可编辑字段、输入格式与导出选项 | 只读；AI 导出前应调用以了解字段边界 |
+| `export_motion` | 独立渲染并导出 PNG 单帧 / PNG 序列 ZIP / GIF；返回 `taskId` 供轮询 | 写操作；`download: true` 时触发浏览器下载，否则只生成并返回结果元数据 |
+| `resolve_export` | 查询导出任务进度与结果，或 `action: cancel` 取消 | 只读 + 取消 |
+
+设计要点：
+
+- `export_motion` 与界面导出共用同一 `renderFrame` 确定性渲染路径与编码器，因此同一参数下的预览与导出帧一致，可用于自动化回归。
+- 导出任务独立于工作台选中状态运行，不依赖页面 UI 状态；任务注册表在 `webmcp-tools.js` 内，`resolve_export` 轮询其进度/结果/错误，并支持取消。
+- `export_motion` 的 `download` 参数默认 `true`（完成时触发一次浏览器下载）。AI 端到端生成素材时需要用户所在页面处于打开状态；如需只生成元数据，可传 `download: false`。
+- 图片字段（`imageRole`）不通过 AI 导出接口注入；本地图片由用户在界面上传后重新导出。
 
 ## 维护依赖
 
