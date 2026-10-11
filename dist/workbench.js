@@ -13,6 +13,7 @@ import { exportGIF } from './gif-exporter.js';
 import { mountCollections } from './collections-ui.js';
 import { schemes } from './schemes.js';
 import { storySources } from './story-effects.js';
+import { registerWebMCPTools } from './webmcp-tools.js';
 mountCollections();
 const $ = (id) => document.getElementById(id);
 const read = (key) => {
@@ -828,5 +829,6 @@ if (document.modelContext?.registerTool) {
       return state();
     },
   });
+  registerWebMCPTools(register);
   addEventListener('pagehide', () => lifecycle.abort(), { once: true });
 }

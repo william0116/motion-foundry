@@ -135,6 +135,83 @@ const outputParent = path.resolve(
     assert(fits.height <= fits.viewport);
     await page.locator('#startExport').scrollIntoViewIfNeeded();
     assert(await page.locator('#startExport').isVisible());
+    // WebMCP tools: describe_template, export_motion and resolve_export must
+    // work as standalone tools with the same deterministic renderer.
+    const webmcp = await page.evaluate(async () => {
+      const m = await import('/webmcp-tools.js');
+      const describe = m.describeTemplate('s-trend');
+      const invalid = (() => {
+        try {
+          m.startExport({ effectId: 'nope' });
+          return null;
+        } catch (e) {
+          return e.message;
+        }
+      })();
+      const frame = m.startExport({
+        effectId: 's-trend',
+        title: '98',
+        body: '阶段一:45\n阶段二:98',
+        format: 'frame',
+        resolution: 720,
+        download: false,
+      });
+      const poll = async (taskId) => {
+        for (let i = 0; i < 80; i++) {
+          const r = m.resolveExport(taskId);
+          if (r.status !== 'running') return r;
+          await new Promise((res) => setTimeout(res, 100));
+        }
+        return m.resolveExport(taskId);
+      };
+      const frameResult = await poll(frame.taskId);
+      const gif = m.startExport({
+        effectId: 's-trend',
+        title: '98',
+        body: '阶段一:45\n阶段二:98',
+        format: 'gif',
+        resolution: 360,
+        fps: 10,
+        download: false,
+      });
+      const gifResult = await poll(gif.taskId);
+      return { describe, invalid, frameResult, gifResult };
+    });
+    assert(webmcp.describe.id === 's-trend');
+    assert.equal(webmcp.describe.bodyMode, 'series');
+    assert(webmcp.describe.fieldInfo.fields.some((f) => f.key === 'body'));
+    assert(webmcp.describe.output.formats.includes('sequence'));
+    assert.match(webmcp.invalid, /未找到该动效/);
+    assert.equal(webmcp.frameResult.status, 'done');
+    assert.equal(webmcp.frameResult.result.format, 'PNG');
+    assert(webmcp.frameResult.result.bytes > 0);
+    assert.equal(webmcp.gifResult.status, 'done');
+    assert.equal(webmcp.gifResult.result.format, 'GIF');
+    assert.equal(webmcp.gifResult.result.background, 'transparent');
+    console.log(
+      'WebMCP tools:',
+      JSON.stringify({
+        describe: webmcp.describe.id,
+        frameResult: webmcp.frameResult.status,
+        gifResult: webmcp.gifResult.status,
+      }),
+    );
+    // Cancellation must stop a running GIF export and report cancelled.
+    const cancelled = await page.evaluate(async () => {
+      const m = await import('/webmcp-tools.js');
+      const t = m.startExport({
+        effectId: 'confetti',
+        title: '值得庆祝！',
+        format: 'gif',
+        resolution: 720,
+        fps: 20,
+        download: false,
+      });
+      await new Promise((res) => setTimeout(res, 150));
+      return m.resolveExport(t.taskId, 'cancel');
+    });
+    assert(['cancelled', 'error'].includes(cancelled.status));
+    console.log('WebMCP cancel:', cancelled.status);
     await page.goto(base + '/qa.html');
     await page.locator('#run').click();
     await page.waitForFunction(
