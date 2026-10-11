@@ -1,0 +1,150 @@
+import { effects, defaults, dimensions, validateBody } from './data.js';
+import { renderFrame } from './renderer.js';
+import { schemes, paletteFor, brandTokens } from './schemes.js';
+import { crc32, toPNG, exportSequence } from './exporter.js';
+export async function testCards(check) {
+  const added = effects.filter((e) => e.kind),
+    c = document.createElement('canvas');
+  [c.width, c.height] = dimensions('9:16', 360);
+  const pixels = () => c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  check(
+    '新增数量及独立合集',
+    added.length === 18 &&
+      added.filter((e) => e.category === 'portrait').length === 12 &&
+      added.filter((e) => e.category === 'lexseek').length === 6,
+    { total: effects.length, portrait: 12, brand: 6 },
+  );
+  check(
+    '原有 24 款默认配色保留',
+    effects.filter((e) => !e.isNew).length === 24 &&
+      effects.filter((e) => !e.isNew).every((e) => defaults(e).scheme === 'free'),
+  );
+  check(
+    '品牌资产色与 UI 主色分工',
+    brandTokens.sky === '#1E9EED' &&
+      brandTokens.primary === '#00A3F0' &&
+      paletteFor({ scheme: 'lexseek-dark' }).primary === '#00C0FE',
+  );
+  for (const e of added) {
+    const s = { ...defaults(e), ratio: '9:16' };
+    renderFrame(c, e, s, 0.58);
+    const a = pixels();
+    let fg = 0;
+    for (let i = 3; i < a.length; i += 4) if (a[i] > 0) fg++;
+    const corner = a[3];
+    let endpoints = true;
+    for (const t of [0, 1]) {
+      renderFrame(c, e, s, t);
+      const b = pixels();
+      for (let i = 3; i < b.length; i += 4)
+        if (b[i]) {
+          endpoints = false;
+          break;
+        }
+    }
+    check(e.name + '：透明外缘与首尾', fg > 0 && corner === 0 && endpoints, {
+      foregroundPixels: fg,
+    });
+  }
+  const e = effects.find((e) => e.id === 'lex-insight'),
+    s = defaults(e),
+    hashes = new Set();
+  for (const scheme of schemes) {
+    renderFrame(c, e, { ...s, scheme: scheme.id }, 0.55);
+    hashes.add(crc32(pixels()));
+  }
+  check(
+    '7 种方案可切换且不污染默认值',
+    hashes.size === 7 && defaults(e).scheme === 'lexseek-light',
+    { distinct: hashes.size },
+  );
+  renderFrame(c, e, s, 0.55);
+  const blob = await toPNG(c),
+    bmp = await createImageBitmap(blob);
+  const decoded = document.createElement('canvas');
+  decoded.width = bmp.width;
+  decoded.height = bmp.height;
+  decoded.getContext('2d').drawImage(bmp, 0, 0);
+  const a = decoded.getContext('2d').getImageData(0, 0, bmp.width, bmp.height).data;
+  let clear = 0,
+    partial = 0,
+    opaque = 0;
+  for (let i = 3; i < a.length; i += 4) a[i] === 0 ? clear++ : a[i] === 255 ? opaque++ : partial++;
+  check('竖版品牌 PNG 解码保留透明与实体底色', clear > 0 && partial > 0 && opaque > 0, {
+    width: bmp.width,
+    height: bmp.height,
+    clear,
+    partial,
+    opaque,
+  });
+  bmp.close();
+  check(
+    '多余要点被拦截而非静默丢弃',
+    !!validateBody(
+      effects.find((e) => e.id === 'pc-compare'),
+      '一\n二\n三',
+    ) &&
+      !!validateBody(
+        effects.find((e) => e.id === 'pc-checklist'),
+        '一\n二\n三\n四',
+      ) &&
+      !validateBody(
+        effects.find((e) => e.id === 'pc-checklist'),
+        '一\n二\n三',
+      ),
+  );
+  let samples = 0;
+  for (const item of added) {
+    for (const position of ['top', 'center', 'bottom'])
+      for (const scale of [60, 100, 130]) {
+        renderFrame(
+          c,
+          item,
+          {
+            ...defaults(item),
+            ratio: '9:16',
+            position,
+            scale,
+            title: '把复杂的信息整理成清晰的思路，让每一份表达都能被看见',
+            body: '这是一段较长的中文内容，用来检查不同画幅下的自动换行和缩放。',
+          },
+          0.62,
+        );
+        if (!pixels().some((v, i) => i % 4 === 3 && v > 0)) throw new Error(item.id + ' 空渲染');
+        samples++;
+      }
+  }
+  check('新增卡片位置 / 尺寸 / 长中文渲染', samples === 162, samples);
+  const sequence = await exportSequence({
+    canvas: c,
+    effect: e,
+    settings: { ...s, duration: 2 },
+    fps: 24,
+    render: renderFrame,
+    signal: new AbortController().signal,
+    onProgress: () => {},
+  });
+  const bytes = new Uint8Array(await sequence.blob.arrayBuffer()),
+    v = new DataView(bytes.buffer);
+  let offset = 0,
+    count = 0,
+    ok = true;
+  while (v.getUint32(offset, true) === 0x04034b50) {
+    const len = v.getUint32(offset + 18, true),
+      n = v.getUint16(offset + 26, true),
+      extra = v.getUint16(offset + 28, true),
+      start = offset + 30 + n + extra;
+    ok &&= v.getUint32(offset + 14, true) === crc32(bytes.slice(start, start + len));
+    offset = start + len;
+    count++;
+  }
+  check(
+    '品牌竖版 48 帧 ZIP 与元数据',
+    ok &&
+      count === 50 &&
+      sequence.metadata.width === 360 &&
+      sequence.metadata.height === 640 &&
+      sequence.metadata.settings.scheme === 'lexseek-light',
+    { entries: count, bytes: bytes.length, scheme: sequence.metadata.settings.scheme },
+  );
+}
