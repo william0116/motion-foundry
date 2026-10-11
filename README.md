@@ -8,6 +8,10 @@ Motion Foundry 是面向视频创作者的浏览器端二维动效工作台。�
 
 ![Motion Foundry 工作台：模板库、实时预览与内容编辑](docs/assets/workbench.png)
 
+### 🚀 在线试用（无需安装）
+
+👉 **[打开 Motion Foundry 在线工作台](https://william0116.github.io/motion-foundry/)** — GitHub Pages 托管的演示站，直接选模板、改内容、导出动画。
+
 [快速开始](#快速开始) · [功能与导出](#功能与导出) · [使用指南](docs/usage.md) · [开发文档](docs/development.md) · [部署](docs/deployment.md) · [参与贡献](CONTRIBUTING.md)
 
 ## 为什么做这个项目
