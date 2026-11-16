@@ -123,5 +123,5 @@ export function mountCollections() {
   document.querySelector('.library-foot').lastElementChild.textContent =
     `${categories.length} 个类型 · 品牌方案可选 · GIF / 透明 PNG`;
   const help = document.querySelector('#helpDialog .small-note');
-  help.textContent = `${effects.length} 个动画预设，${categories.length} 个类型。支持本地生成 GIF、PNG 单帧与透明 PNG 序列。配色只作用于当前动效；字幕为固定节奏，波形不随音频变化，转场为覆盖层。编辑内容刷新后会丢失；AI 生成、透明 MOV 与团队共享尚未实现。`;
+  help.textContent = `${effects.length} 个动画预设，${categories.length} 个类型。支持本地生成 GIF、PNG 单帧与透明 PNG 序列。配色只作用于当前动效；字幕为固定节奏，波形不随音频变化，转场为覆盖层。收藏与工程保存在本浏览器（IndexedDB），不会同步到其他设备；AI 生成、透明 MOV 与团队共享尚未实现。`;
 }

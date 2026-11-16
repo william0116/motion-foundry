@@ -1,0 +1,19 @@
+{
+  "name": "Motion Foundry · 动效工坊",
+  "short_name": "动效工坊",
+  "description": "挑选动效模板、替换内容、实时预览，本地生成透明动画素材。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#121610",
+  "theme_color": "#121610",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
