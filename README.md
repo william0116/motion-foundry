@@ -1,5 +1,9 @@
 # Motion Foundry · 动效工坊
 
+[![CI](https://github.com/william0116/motion-foundry/actions/workflows/ci.yml/badge.svg)](https://github.com/william0116/motion-foundry/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-c4f36b.svg)](LICENSE)
+[![Online Demo](https://img.shields.io/badge/demo-online-84d8e8.svg)](https://william0116.github.io/motion-foundry/)
+
 **选一个模板，换成你的内容，导出可以叠进视频的动画。**
 
 Motion Foundry 是面向视频创作者的浏览器端二维动效工作台。无需使用 After Effects，也无需从空白时间线开始：通过模板制作标题、竖版信息卡、数据图表、解说包装和转场覆盖层。
