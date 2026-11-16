@@ -17,6 +17,9 @@ Node.js 22+ 用于开发工具。`npm start` 只运行仓库内的静态服务�
 | `card-renderer.js`、`expanded-renderer.js`、`story-renderer.js`          | 按模板类型绘制对应动效                                               |
 | `exporter.js`                                                            | Canvas 转 PNG、ZIP STORE 打包、CRC32、导出清单                       |
 | `gif-exporter.js`                                                        | 采样共用渲染器、量化调色板、透明处理与 gifenc 调用                   |
+| `storage.js`                                                             | IndexedDB 工程存取（含图片 Blob）、列表/重命名/删除、50 个上限       |
+| `webmcp-tools.js`                                                        | 浏览器 AI 工具：模板说明查询与独立导出任务（含运行时参数校验）       |
+| `sw.js`                                                                  | PWA service worker：同源 GET 网络优先，版本化缓存作离线回退          |
 
 编辑状态传给统一渲染入口；预览按播放进度采样，导出按帧数采样。帧绘制不依赖 DOM 动画、墙上时间或未固定的随机源，因此可重复渲染与拖动定位。字体和浏览器栅格化仍会影响跨机器像素结果。
 
