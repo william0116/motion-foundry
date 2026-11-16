@@ -166,20 +166,24 @@
             <span>配色</span>
             <div id="palette" class="palette"></div>
           </div>
-          <div class="field-columns">
-            <label class="field"
-              >画幅<select id="ratio">
-                <option value="16:9">横屏 16:9</option>
-                <option value="9:16">竖屏 9:16</option>
-                <option value="1:1">方形 1:1</option>
-              </select></label
-            ><label class="field"
-              >时长<select id="duration">
-                <option value="2">2 秒</option>
-                <option value="3" selected>3 秒</option>
-                <option value="5">5 秒</option>
-              </select></label
-            >
+          <label class="field"
+            >画幅<select id="ratio">
+              <option value="16:9">横屏 16:9</option>
+              <option value="9:16">竖屏 9:16</option>
+              <option value="1:1">方形 1:1</option>
+            </select></label
+          >
+          <div class="setting-row">
+            <span>时长</span
+            ><input
+              id="duration"
+              type="range"
+              min="1"
+              max="10"
+              step="0.5"
+              value="3"
+              aria-label="时长（秒）"
+            /><b id="durationValue">3 秒</b>
           </div>
           <label class="field"
             >动感

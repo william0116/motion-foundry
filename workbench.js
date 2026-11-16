@@ -13,6 +13,7 @@ import { exportGIF } from './gif-exporter.js';
 import { mountCollections } from './collections-ui.js';
 import { schemes } from './schemes.js';
 import { storySources } from './story-effects.js';
+import { registerWebMCPTools } from './webmcp-tools.js';
 mountCollections();
 const $ = (id) => document.getElementById(id);
 const read = (key) => {
@@ -246,6 +247,7 @@ function syncControls() {
   $('effectName').textContent = selected.name;
   for (const k of ['title', 'subtitle']) $(k + 'Input').value = settings[k];
   for (const k of ['ratio', 'duration', 'intensity', 'scale']) $(k).value = settings[k];
+  $('durationValue').textContent = `${settings.duration} 秒`;
   $('extraContent').hidden = selected.engine
     ? !selected.bodyMode
     : !selected.kind || ['wordmark', 'ribbon'].includes(selected.kind);
@@ -828,5 +830,6 @@ if (document.modelContext?.registerTool) {
       return state();
     },
   });
+  registerWebMCPTools(register);
   addEventListener('pagehide', () => lifecycle.abort(), { once: true });
 }
