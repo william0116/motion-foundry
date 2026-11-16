@@ -247,6 +247,7 @@ function syncControls() {
   $('effectName').textContent = selected.name;
   for (const k of ['title', 'subtitle']) $(k + 'Input').value = settings[k];
   for (const k of ['ratio', 'duration', 'intensity', 'scale']) $(k).value = settings[k];
+  $('durationValue').textContent = `${settings.duration} 秒`;
   $('extraContent').hidden = selected.engine
     ? !selected.bodyMode
     : !selected.kind || ['wordmark', 'ribbon'].includes(selected.kind);

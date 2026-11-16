@@ -16,8 +16,10 @@ import { toPNG, download, exportSequence } from './exporter.js';
 import { exportGIF } from './gif-exporter.js';
 
 const categoryName = (id) => categories.find((c) => c[0] === id)?.[2] || id;
-// Matches the UI: duration options, positions, and valid export parameters.
-const DURATIONS = [2, 3, 5];
+// Matches the UI: duration range (1–10 s, 0.5 s step) and valid export parameters.
+const DURATION_MIN = 1;
+const DURATION_MAX = 10;
+const DURATION_STEP = 0.5;
 const FRAME_RESOLUTIONS = ['720', '1080'];
 const SEQUENCE_RESOLUTIONS = ['720', '1080'];
 const SEQUENCE_FPS = ['24', '25', '30'];
@@ -94,7 +96,7 @@ function outputInfo(effect) {
   return {
     ratios: ['16:9', '9:16', '1:1'],
     defaultRatio: effect.ratio || '16:9',
-    durations: DURATIONS,
+    durations: { min: DURATION_MIN, max: DURATION_MAX, step: DURATION_STEP },
     schemes: schemes.map((s) => s.id),
     defaultScheme: effect.scheme || 'free',
     formats: effect.category === 'transition' ? ['sequence', 'gif'] : ['frame', 'sequence', 'gif'],
@@ -157,8 +159,22 @@ export function startExport({
   if (ratio !== undefined && !['16:9', '9:16', '1:1'].includes(ratio)) throw new Error('画幅无效');
   if (scheme !== undefined && !schemes.some((s) => s.id === scheme))
     throw new Error('配色方案无效');
-  if (duration !== undefined && !DURATIONS.includes(Number(duration)))
-    throw new Error('时长仅支持 2、3、5 秒');
+  if (duration !== undefined) {
+    const d = Number(duration);
+    if (!Number.isFinite(d) || d < 1 || d > 10 || d % 0.5 !== 0)
+      throw new Error('时长支持 1–10 秒，步长 0.5 秒');
+  }
+  // Runtime length guards: schema maxLength is declarative only, enforce here too.
+  for (const [key, value, max] of [
+    ['标题', title, 40],
+    ['辅助文字', subtitle, 70],
+    ['正文', body, 180],
+    ['标签', badge, 20],
+  ]) {
+    if (value === undefined) continue;
+    if (typeof value !== 'string') throw new Error(`${key}必须是字符串`);
+    if (value.length > max) throw new Error(`${key}最多 ${max} 字`);
+  }
   const settings = { ...defaults(effect), image: null };
   if (title !== undefined) settings.title = title;
   if (subtitle !== undefined) settings.subtitle = subtitle;
@@ -288,7 +304,7 @@ export function registerWebMCPTools(register) {
         badge: { type: 'string', maxLength: 20 },
         scheme: { type: 'string', enum: schemes.map((s) => s.id) },
         ratio: { type: 'string', enum: ['16:9', '9:16', '1:1'] },
-        duration: { type: 'number', enum: DURATIONS },
+        duration: { type: 'number' },
         format: { type: 'string', enum: ['frame', 'sequence', 'gif'] },
         resolution: {
           type: 'number',

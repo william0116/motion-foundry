@@ -12,6 +12,7 @@ import {
 import { schemes } from '../dist/schemes.js';
 import { parseSeries } from '../dist/expanded-effects.js';
 import { crc32, zipFiles } from '../dist/exporter.js';
+import { describeTemplate, startExport } from '../dist/webmcp-tools.js';
 
 test('template IDs, categories and schemes are unique and all defaults validate', () => {
   assert.equal(new Set(effects.map((e) => e.id)).size, effects.length);
@@ -80,6 +81,34 @@ test('data input rejects negative, empty, excessive and zero-only series', () =>
       '1.5',
     ),
   );
+});
+
+test('WebMCP describe_template exposes fields, formats and duration range', () => {
+  const d = describeTemplate('s-trend');
+  assert.equal(d.id, 's-trend');
+  assert.equal(d.bodyMode, 'series');
+  assert(d.fieldInfo.fields.some((f) => f.key === 'body'));
+  assert.deepEqual(d.output.formats, ['frame', 'sequence', 'gif']);
+  assert.deepEqual(d.output.durations, { min: 1, max: 10, step: 0.5 });
+  assert(d.output.schemes.includes('violet'));
+  assert.throws(() => describeTemplate('nope'), /未找到该动效/);
+});
+
+test('WebMCP export_motion enforces runtime limits before starting a task', () => {
+  const base = { effectId: 'elastic', format: 'frame', resolution: 720, download: false };
+  // Oversized text fields are rejected even without browser schema enforcement.
+  assert.throws(() => startExport({ ...base, title: 'x'.repeat(41) }), /标题最多 40 字/);
+  assert.throws(() => startExport({ ...base, subtitle: 'x'.repeat(71) }), /辅助文字最多 70 字/);
+  assert.throws(() => startExport({ ...base, body: 'x'.repeat(181) }), /正文最多 180 字/);
+  assert.throws(() => startExport({ ...base, badge: 'x'.repeat(21) }), /标签最多 20 字/);
+  assert.throws(() => startExport({ ...base, title: 12345 }), /标题必须是字符串/);
+  // Duration accepts 1–10 s with 0.5 s steps only.
+  for (const bad of [0.5, 10.5, 2.3, 0]) {
+    assert.throws(() => startExport({ ...base, duration: bad }), /时长支持 1–10 秒/, String(bad));
+  }
+  assert.throws(() => startExport({ effectId: 'nope' }), /未找到该动效/);
+  assert.throws(() => startExport({ ...base, resolution: 500 }), /分辨率仅支持/);
+  assert.throws(() => startExport({ ...base, scheme: 'nope' }), /配色方案无效/);
 });
 
 test('CRC32 matches a known vector and ZIP preserves UTF-8 names and bytes', async () => {

@@ -78,7 +78,7 @@ export async function exportSequence({
   signal,
   onProgress,
 }) {
-  const count = settings.duration * fps,
+  const count = Math.max(1, Math.round(settings.duration * fps)),
     files = [];
   for (let i = 0; i < count; i++) {
     if (signal.aborted) throw new DOMException('已取消导出', 'AbortError');

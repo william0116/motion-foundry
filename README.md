@@ -6,6 +6,17 @@ Motion Foundry 是面向视频创作者的浏览器端二维动效工作台。�
 
 纯静态网站 · 无需账号或后端 · 本地渲染与导出 · MIT 许可
 
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/demo-effect.gif" alt="导出的透明动效叠加在视频画面上的实际效果" /></td>
+    <td width="50%"><img src="docs/assets/demo-workflow.gif" alt="工作台操作流程：悬停预览模板、点击选中、编辑内容" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>导出成品：透明动效直接叠加进视频</sub></td>
+    <td align="center"><sub>操作过程：悬停预览 → 选中 → 编辑</sub></td>
+  </tr>
+</table>
+
 ![Motion Foundry 工作台：模板库、实时预览与内容编辑](docs/assets/workbench.png)
 
 ### 🚀 在线试用（无需安装）
