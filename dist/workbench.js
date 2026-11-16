@@ -14,6 +14,7 @@ import { mountCollections } from './collections-ui.js';
 import { schemes } from './schemes.js';
 import { storySources } from './story-effects.js';
 import { registerWebMCPTools } from './webmcp-tools.js';
+import { listProjects, saveProject, loadProject, renameProject, deleteProject } from './storage.js';
 mountCollections();
 const $ = (id) => document.getElementById(id);
 const read = (key) => {
@@ -41,6 +42,59 @@ let view = 'all',
   exportController = null,
   lastExport = null,
   lastDownloadUrl = null;
+// Undo/redo: snapshots of { effectId, settings } taken before each meaningful
+// change. The decoded image stays a live reference; imageFile (the Blob) is
+// what gets persisted by project save.
+let history = [],
+  historyIndex = -1,
+  historyTimer = null,
+  currentProjectId = null;
+const HISTORY_LIMIT = 60;
+const snapshot = () => ({ effectId: selected.id, settings: { ...settings } });
+function pushHistory(coalesce = false) {
+  // Typing in a text field fires many events; merge them into one entry while
+  // the coalesce window is open by replacing the most recent snapshot.
+  if (coalesce && historyTimer) {
+    history[historyIndex] = snapshot();
+    clearTimeout(historyTimer);
+    historyTimer = setTimeout(() => (historyTimer = null), 600);
+    syncHistoryButtons();
+    return;
+  }
+  if (historyTimer) {
+    clearTimeout(historyTimer);
+    historyTimer = null;
+  }
+  history = history.slice(0, historyIndex + 1);
+  history.push(snapshot());
+  if (history.length > HISTORY_LIMIT) history.shift();
+  historyIndex = history.length - 1;
+  if (coalesce) historyTimer = setTimeout(() => (historyTimer = null), 600);
+  syncHistoryButtons();
+}
+function syncHistoryButtons() {
+  $('undoButton').disabled = historyIndex <= 0;
+  $('redoButton').disabled = historyIndex >= history.length - 1;
+}
+function applySnapshot(entry) {
+  const effect = effects.find((e) => e.id === entry.effectId);
+  if (!effect) return;
+  selected = effect;
+  settings = { ...entry.settings };
+  syncControls();
+  draw();
+  syncHistoryButtons();
+}
+function undo() {
+  if (historyIndex <= 0) return;
+  historyIndex--;
+  applySnapshot(history[historyIndex]);
+}
+function redo() {
+  if (historyIndex >= history.length - 1) return;
+  historyIndex++;
+  applySnapshot(history[historyIndex]);
+}
 const notify = (message) => {
   $('toast').textContent = message;
   $('toast').hidden = false;
@@ -59,7 +113,11 @@ function state() {
   return {
     selectedId: selected.id,
     effectName: selected.name,
-    settings: { ...settings, image: settings.image ? 'local image' : null },
+    settings: {
+      ...settings,
+      image: settings.image ? 'local image' : null,
+      imageFile: settings.imageFile ? 'local image file' : null,
+    },
     visibleIds: filtered().map((e) => e.id),
     favorites: [...favorites],
     playing,
@@ -210,6 +268,7 @@ function selectEffect(id, scroll = false) {
   recent = [id, ...recent.filter((x) => x !== id)].slice(0, 24);
   persist();
   progress = 0.05;
+  pushHistory();
   syncControls();
   renderLibrary();
   if (scroll && innerWidth <= 700)
@@ -403,6 +462,7 @@ for (const [color, name] of colors) {
   b.setAttribute('aria-label', `配色：${name}`);
   b.onclick = () => {
     settings.color = color;
+    pushHistory();
     syncControls();
   };
   $('palette').append(b);
@@ -428,11 +488,13 @@ $('formatFilter').onchange = (e) => {
 $('schemeSelect').onchange = (e) => {
   if (!schemes.some((s) => s.id === e.target.value)) return;
   settings.scheme = e.target.value;
+  pushHistory();
   syncControls();
 };
 for (const key of ['badge', 'body'])
   $(key + 'Input').oninput = (e) => {
     settings[key] = e.target.value;
+    pushHistory(true);
     validate();
     draw();
   };
@@ -489,18 +551,21 @@ $('favoriteButton').onclick = () => favorite(selected.id);
 for (const k of ['title', 'subtitle'])
   $(k + 'Input').oninput = (e) => {
     settings[k] = e.target.value;
+    pushHistory(true);
     validate();
     draw();
   };
 for (const k of ['ratio', 'duration', 'intensity', 'scale'])
   $(k).oninput = (e) => {
     settings[k] = k === 'ratio' ? e.target.value : +e.target.value;
+    pushHistory(true);
     syncControls();
   };
 document.querySelectorAll('[data-position]').forEach(
   (b) =>
     (b.onclick = () => {
       settings.position = b.dataset.position;
+      pushHistory();
       syncControls();
     }),
 );
@@ -530,6 +595,7 @@ $('replayButton').onclick = () => {
 $('resetButton').onclick = () => {
   settings = defaults(selected);
   $('imageUpload').value = '';
+  pushHistory();
   syncControls();
   notify('已恢复该动效的默认内容与样式');
 };
@@ -551,6 +617,9 @@ $('imageUpload').onchange = async (e) => {
     await im.decode();
     if (im.width * im.height > 24000000) throw new Error('图片尺寸过大，请缩小到 2400 万像素以内');
     settings.image = im;
+    // Keep the original Blob so project save can persist the image locally.
+    settings.imageFile = file;
+    pushHistory();
     syncControls();
     notify('图片已加入，未上传到服务器');
   } catch (error) {
@@ -562,6 +631,8 @@ $('imageUpload').onchange = async (e) => {
 };
 $('removeImage').onclick = () => {
   settings.image = null;
+  settings.imageFile = null;
+  pushHistory();
   syncControls();
 };
 for (const id of ['helpButton', 'guideButton']) $(id).onclick = () => $('helpDialog').showModal();
@@ -753,10 +824,129 @@ document.addEventListener('keydown', (e) => {
     !document.querySelector('dialog[open]')
   )
     $('helpDialog').showModal();
+  // App-level undo/redo. Tracked history overrides native field undo so one
+  // gesture reverts the last content/style change consistently.
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'z') {
+    if (document.querySelector('dialog[open]')) return;
+    e.preventDefault();
+    e.shiftKey ? redo() : undo();
+  } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+    if (document.querySelector('dialog[open]')) return;
+    e.preventDefault();
+    redo();
+  }
 });
 renderLibrary();
 syncControls();
 requestAnimationFrame(tick);
+// Undo/redo buttons mirror the keyboard shortcuts.
+$('undoButton').onclick = undo;
+$('redoButton').onclick = redo;
+// Seed history with the initial state so the first edit is undoable.
+pushHistory();
+
+// Project save/load backed by IndexedDB. Everything stays on this device.
+let projectSaveName = '';
+async function refreshProjectList() {
+  const projects = await listProjects();
+  const list = $('projectList');
+  list.replaceChildren();
+  $('projectsEmpty').hidden = projects.length > 0;
+  $('projectsNote').hidden = projects.length === 0;
+  for (const p of projects) {
+    const li = document.createElement('li');
+    li.className = 'project-item';
+    const effect = effects.find((e) => e.id === p.effectId);
+    const main = document.createElement('div');
+    main.className = 'project-meta';
+    const name = document.createElement('strong');
+    name.textContent = p.name;
+    const sub = document.createElement('span');
+    sub.className = 'project-sub';
+    sub.textContent = `${effect ? effect.name : p.effectId}${p.hasImage ? ' · 含图片' : ''} · ${new Date(p.updatedAt).toLocaleString()}`;
+    main.append(name, sub);
+    const open = document.createElement('button');
+    open.className = 'text-button';
+    open.textContent = '打开';
+    open.onclick = () => openProject(p.id);
+    const rename = document.createElement('button');
+    rename.className = 'text-button';
+    rename.textContent = '重命名';
+    rename.onclick = async () => {
+      const next = prompt('工程名称', p.name);
+      if (next === null) return;
+      await renameProject(p.id, next.trim() || '未命名工程');
+      await refreshProjectList();
+    };
+    const del = document.createElement('button');
+    del.className = 'text-button danger';
+    del.textContent = '删除';
+    del.onclick = async () => {
+      if (!confirm(`删除工程「${p.name}」？此操作不可撤销。`)) return;
+      await deleteProject(p.id);
+      if (currentProjectId === p.id) currentProjectId = null;
+      await refreshProjectList();
+      notify('工程已删除');
+    };
+    li.append(main, open, rename, del);
+    list.append(li);
+  }
+}
+async function openProject(id) {
+  try {
+    const project = await loadProject(id);
+    const effect = effects.find((e) => e.id === project.effectId);
+    if (!effect) throw new Error('该工程的模板已不存在');
+    selected = effect;
+    settings = { ...project.settings };
+    currentProjectId = project.id;
+    projectSaveName = project.name;
+    recent = [effect.id, ...recent.filter((x) => x !== effect.id)].slice(0, 24);
+    persist();
+    progress = 0.05;
+    pushHistory();
+    syncControls();
+    renderLibrary();
+    $('projectsDialog').close();
+    notify(`已打开工程「${project.name}」`);
+  } catch (error) {
+    notify(error.message || '工程打开失败');
+  }
+}
+async function doSaveProject() {
+  const suggested = projectSaveName || `${selected.name} · ${new Date().toLocaleString()}`;
+  const name = prompt('保存当前配置为工程（仅存于本浏览器）', suggested.slice(0, 40));
+  if (name === null) return;
+  try {
+    currentProjectId = await saveProject({
+      id: currentProjectId,
+      name: name.trim() || '未命名工程',
+      effectId: selected.id,
+      settings,
+    });
+    projectSaveName = name.trim() || '未命名工程';
+    notify(`工程「${projectSaveName}」已保存到本地`);
+  } catch (error) {
+    notify(error.message || '保存失败，请重试');
+  }
+}
+$('saveProjectButton').onclick = doSaveProject;
+$('openProjectsButton').onclick = async () => {
+  await refreshProjectList();
+  $('projectsDialog').showModal();
+};
+document
+  .querySelectorAll('#projectsDialog .close-dialog')
+  .forEach((b) => (b.onclick = () => $('projectsDialog').close()));
+
+// PWA: register the offline service worker when served over http(s).
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {
+      notify('离线缓存不可用，本次仍可正常使用。');
+    });
+  });
+}
 // Optional WebMCP uses the same state/actions as the UI and never starts a download.
 if (document.modelContext?.registerTool) {
   const lifecycle = new AbortController();

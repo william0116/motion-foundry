@@ -212,6 +212,72 @@ const outputParent = path.resolve(
     });
     assert(['cancelled', 'error'].includes(cancelled.status));
     console.log('WebMCP cancel:', cancelled.status);
+    // Undo/redo controls exist and respond to the keyboard shortcut.
+    // The mobile dialog assertions above leave #exportDialog open; a modal
+    // dialog makes the page inert, so close it before touching the inspector.
+    if (await page.locator('#exportDialog').evaluate((el) => el.open)) {
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(200);
+    }
+    assert(await page.locator('#undoButton').isVisible());
+    assert(await page.locator('#redoButton').isVisible());
+    await page.locator('#titleInput').fill('撤销测试');
+    await page.waitForTimeout(900);
+    assert.equal(await page.locator('#titleInput').inputValue(), '撤销测试');
+    await page.locator('body').press('Control+z');
+    await page.waitForTimeout(200);
+    assert.notEqual(await page.locator('#titleInput').inputValue(), '撤销测试');
+    await page.locator('body').press('Control+Shift+z');
+    await page.waitForTimeout(200);
+    assert.equal(await page.locator('#titleInput').inputValue(), '撤销测试');
+    // IndexedDB project save/load round-trip via the storage module.
+    const storage = await page.evaluate(async () => {
+      const s = await import('/storage.js');
+      const id = await s.saveProject({
+        name: '测试工程',
+        effectId: 's-trend',
+        settings: {
+          title: '98',
+          subtitle: '副标题',
+          body: '阶段一:45\n阶段二:98',
+          badge: '',
+          scheme: 'violet',
+          color: '#ffa788',
+          ratio: '9:16',
+          duration: 5,
+          intensity: 60,
+          position: 'center',
+          scale: 100,
+          image: null,
+          imageFile: null,
+        },
+      });
+      const list = await s.listProjects();
+      const loaded = await s.loadProject(id);
+      await s.deleteProject(id);
+      const afterDelete = await s.listProjects();
+      return {
+        id,
+        inList: list.some((p) => p.id === id),
+        loadedTitle: loaded.settings.title,
+        loadedScheme: loaded.settings.scheme,
+        loadedRatio: loaded.settings.ratio,
+        deleted: !afterDelete.some((p) => p.id === id),
+      };
+    });
+    assert(storage.id);
+    assert(storage.inList);
+    assert.equal(storage.loadedTitle, '98');
+    assert.equal(storage.loadedScheme, 'violet');
+    assert.equal(storage.loadedRatio, '9:16');
+    assert(storage.deleted);
+    console.log('Storage round-trip:', JSON.stringify(storage));
+    // PWA assets must be reachable for offline install.
+    for (const asset of ['/manifest.webmanifest', '/sw.js', '/icon.svg']) {
+      const res = await page.request.get(base + asset);
+      assert.equal(res.status(), 200, asset);
+    }
+    console.log('PWA assets: manifest/sw/icon all 200');
     await page.goto(base + '/qa.html');
     await page.locator('#run').click();
     await page.waitForFunction(

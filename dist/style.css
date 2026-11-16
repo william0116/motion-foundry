@@ -696,6 +696,68 @@ kbd {
 .swatch.selected {
   outline-color: #e4ebdc;
 }
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.settings-actions .icon-button {
+  font-size: 15px;
+  line-height: 20px;
+  min-width: 26px;
+  padding: 2px 5px;
+}
+.settings-actions .icon-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+#durationValue {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.project-list {
+  list-style: none;
+  margin: 14px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+.project-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #191c1f;
+}
+.project-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+.project-meta strong {
+  font-size: 13px;
+  color: #e8ede8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-sub {
+  font-size: 11px;
+  color: #697881;
+}
+.project-item .text-button {
+  white-space: nowrap;
+}
+.text-button.danger {
+  color: #e08a7a;
+}
 .field-columns {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1065,6 +1127,13 @@ progress {
   }
   .settings {
     display: block;
+  }
+  .settings-title {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .settings-actions {
+    gap: 8px;
   }
   .page-heading h1 {
     font-size: 25px;

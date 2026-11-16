@@ -10,6 +10,8 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='12' fill='%23c4f36b'/%3E%3Cpath d='m13 10 18 10-18 10z' fill='%23121610'/%3E%3C/svg%3E"
     />
     <link rel="stylesheet" href="style.css" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="theme-color" content="#121610" />
   </head>
   <body>
     <link rel="stylesheet" href="collections.css" /><link
@@ -140,7 +142,29 @@
         <div class="settings">
           <div class="settings-title">
             <h3>换成你的内容</h3>
-            <button class="text-button" id="resetButton">重置</button>
+            <div class="settings-actions">
+              <button
+                class="icon-button"
+                id="undoButton"
+                aria-label="撤销"
+                title="撤销 (Ctrl/Cmd+Z)"
+                disabled
+              >
+                ↶
+              </button>
+              <button
+                class="icon-button"
+                id="redoButton"
+                aria-label="重做"
+                title="重做 (Ctrl/Cmd+Shift+Z)"
+                disabled
+              >
+                ↷
+              </button>
+              <button class="text-button" id="saveProjectButton">保存工程</button>
+              <button class="text-button" id="openProjectsButton">我的工程</button>
+              <button class="text-button" id="resetButton">重置</button>
+            </div>
           </div>
           <label class="field"
             >主标题
@@ -321,10 +345,27 @@
         </li>
       </ol>
       <p class="small-note">
-        模板驱动、本地渲染，支持 GIF 与透明 PNG 导出。收藏仅保存在此浏览器，编辑内容刷新后会丢失；
-        AI 生成、透明 MOV 与团队共享尚未实现。
+        模板驱动、本地渲染，支持 GIF 与透明 PNG 导出。收藏与工程保存在此浏览器（IndexedDB
+        本地存储，不上传服务器）；AI 生成、透明 MOV 与团队共享尚未实现。
       </p>
       <button class="primary close-dialog">开始制作</button>
+    </dialog>
+    <dialog id="projectsDialog" aria-labelledby="projectsTitle">
+      <div class="modal-head">
+        <div>
+          <span class="eyebrow">LOCAL PROJECTS</span>
+          <h2 id="projectsTitle">我的工程</h2>
+        </div>
+        <button class="icon-button close-dialog" aria-label="关闭工程面板">×</button>
+      </div>
+      <p class="small-note" id="projectsNote">
+        工程保存在当前浏览器（IndexedDB），包含文案、数据、样式与已上传图片；不会同步到其他设备。
+      </p>
+      <ul class="project-list" id="projectList"></ul>
+      <p class="small-note" id="projectsEmpty" hidden>
+        还没有保存的工程。在右侧「换成你的内容」中点「保存工程」即可留下当前配置。
+      </p>
+      <button class="primary close-dialog">关闭</button>
     </dialog>
     <div id="toast" class="toast" role="status" hidden></div>
     <script type="module" src="workbench.js"></script>
