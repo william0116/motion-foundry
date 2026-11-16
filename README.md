@@ -23,7 +23,7 @@ Motion Foundry 是面向视频创作者的浏览器端二维动效工作台。�
 
 👉 **[打开 Motion Foundry 在线工作台](https://william0116.github.io/motion-foundry/)** — GitHub Pages 托管的演示站，直接选模板、改内容、导出动画。
 
-[快速开始](#快速开始) · [功能与导出](#功能与导出) · [使用指南](docs/usage.md) · [开发文档](docs/development.md) · [部署](docs/deployment.md) · [参与贡献](CONTRIBUTING.md)
+[快速开始](#快速开始) · [功能与导出](#功能与导出) · [浏览器 AI 工具](#浏览器-ai-工具webmcp) · [使用指南](docs/usage.md) · [开发文档](docs/development.md) · [部署](docs/deployment.md) · [参与贡献](CONTRIBUTING.md)
 
 ## 为什么做这个项目
 
@@ -58,6 +58,27 @@ Motion Foundry 是面向视频创作者的浏览器端二维动效工作台。�
 - 动态字幕采用固定节奏，装饰波形不随音频变化。转场是覆盖层，不会扭曲或处理底层视频。
 - 收藏和最近使用保存在当前浏览器的 `localStorage`；工程（文案、数据、样式与已上传图片）通过「保存工程」写入当前浏览器的 `IndexedDB`，可重新打开、重命名或删除，但不会同步到其他设备或浏览器，也没有多人协同。未保存的临时编辑在刷新后仍会丢失。
 - 字体依赖本机字体；不同操作系统可能有排版差异。当前自动化回归针对 Chromium，不代表所有浏览器已认证兼容。
+
+## 浏览器 AI 工具（WebMCP）
+
+当浏览器提供 `document.modelContext.registerTool` 时，工作台会注册一组受控工具，让页面内的 AI 助手完成「查模板 → 配内容 → 导出素材」的完整闭环，而不需要用户逐项点击：
+
+| 工具                    | 作用                                                           | 类型                 |
+| ----------------------- | -------------------------------------------------------------- | -------------------- |
+| `read_motion_workbench` | 读取模板 ID 列表与当前配置                                     | 只读                 |
+| `describe_template`     | 返回某个模板的可编辑字段、输入格式（如 `名称:数值`）与导出选项 | 只读                 |
+| `configure_motion`      | 在可见工作台中选择模板并填入文案、数据与配色                   | 写操作，不导出       |
+| `export_motion`         | 独立渲染并导出 PNG 单帧 / 透明 PNG 序列 ZIP / GIF，返回任务 ID | 写操作，可选触发下载 |
+| `resolve_export`        | 轮询导出任务的进度与结果，或取消长任务                         | 只读 + 取消          |
+
+设计约束：
+
+- **渐进增强，不是 AI 后端**：普通浏览器不提供该接口也能完成全部手动制作流程；工具不会联网调用任何模型，也不代替用户决策。
+- **导出与界面共用渲染路径**：AI 导出走的是同一个 `renderFrame` 确定性渲染器，因此结果与手动导出一致，可被自动化回归覆盖。
+- **运行时参数校验**：文字长度、时长范围、画幅、配色、分辨率、帧率在工具内部二次强制，不完全依赖 schema 声明。
+- **图片不经 AI 注入**：需要本地图片的模板仍由用户在界面上传后再导出。
+
+> ⚠️ **当前可用性**：截至本次发布，主流 Chrome 稳定版尚未开放 `document.modelContext`，因此在普通浏览器中这些工具不会注册，界面也不显示 AI 入口。代码已实现并通过测试（自动化测试以注入方式验证工具行为），待浏览器提供该接口后即可生效。详见[开发与测试](docs/development.md)。
 
 ## 快速开始
 
@@ -125,8 +146,12 @@ motion-foundry/
 │   ├── schemes.js            # 可选配色
 │   ├── exporter.js           # PNG、ZIP 与元数据
 │   ├── gif-exporter.js       # GIF 编码适配
+│   ├── storage.js            # IndexedDB 工程保存（含图片 Blob）
+│   ├── webmcp-tools.js       # 浏览器 AI 工具（模板说明与独立导出）
+│   ├── sw.js / manifest.webmanifest / icon.svg  # PWA 离线支持
 │   ├── qa.html / *-tests.js   # 浏览器渲染与导出校验
 │   └── vendor/gifenc/        # 随项目分发的 MIT 编码器
+├── .github/workflows/        # CI：check、Node 测试与浏览器回归
 ├── scripts/                  # 本地静态服务与工程检查
 ├── tests/                    # Node、浏览器及可选的独立解码测试
 ├── docs/                     # 使用、架构、扩展、部署与发布检查
